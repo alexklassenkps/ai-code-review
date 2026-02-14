@@ -128,4 +128,16 @@ describe('buildSummaryComment', () => {
         assert.match(result, /Included \(1\): `ARCH\.md`/);
         assert.match(result, /Could not include \(1\): `MISSING\.md`/);
     });
+
+    it('shows fallback text when no context files were provided', () => {
+        const result = buildSummaryComment({
+            providerName: 'Claude',
+            review: { summary: 'LGTM', comments: [] },
+            triggerUser: 'frank',
+            inlineSuccess: 0,
+            contextFiles: null,
+        });
+
+        assert.match(result, /No Context Files included/);
+    });
 });

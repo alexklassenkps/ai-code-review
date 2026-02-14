@@ -25842,11 +25842,13 @@ function loadContextFilesWithStatus(filePaths, workDir) {
     for (const filePath of filePaths) {
         const fullPath = path.resolve(workDir, filePath);
         try {
+            console.info(`trying to load file at "${filePath}"`)
             const content = fs.readFileSync(fullPath, 'utf8');
             sections.push(`## ${filePath}\n\n${content}`);
             includedFiles.push(filePath);
         } catch (e) {
             missingFiles.push(filePath);
+            console.info(`could not load "${filePath}"`)
         }
     }
 
@@ -25893,7 +25895,7 @@ function formatFileList(files) {
 }
 
 function buildContextFilesSection(contextFiles) {
-    if (!contextFiles || !contextFiles.requestedFiles?.length) return '';
+    if (!contextFiles || !contextFiles.requestedFiles?.length) return 'No Context Files included';
 
     const included = contextFiles.includedFiles || [];
     const missing = contextFiles.missingFiles || [];
@@ -26040,6 +26042,8 @@ async function run() {
             if (context) {
                 core.info(`Loaded ${contextFileStatus.includedFiles.length}/${config.contextFiles.length} context file(s)`);
             }
+        } else {
+            core.info("No context file(s) loaded")
         }
 
         // Call AI provider

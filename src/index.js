@@ -95,6 +95,8 @@ async function run() {
             if (context) {
                 core.info(`Loaded ${contextFileStatus.includedFiles.length}/${config.contextFiles.length} context file(s)`);
             }
+        } else {
+            core.info("No context file(s) loaded")
         }
 
         // Call AI provider
