@@ -25807,16 +25807,22 @@ module.exports = { getPlatformClient, registerPlatform };
 const core = __nccwpck_require__(2326);
 
 function getConfig() {
+    function getInput(name ) {
+        let input = core.getInput(name);
+        console.log(`input name "${name}", value "${input}"`)
+        return input;
+    }
+
     return {
-        anthropicKey: core.getInput('anthropic_api_key'),
-        openaiKey: core.getInput('openai_api_key'),
-        defaultProvider: core.getInput('default_provider') || 'claude',
-        claudeModel: core.getInput('claude_model') || 'claude-sonnet-4-5-20250929',
-        codexModel: core.getInput('codex_model') || 'gpt-4o',
-        platform: core.getInput('platform') || 'forgejo',
-        platformToken: core.getInput('platform_token'),
-        platformUrl: (core.getInput('platform_url')).replace(/\/$/, ''),
-        contextFiles: (core.getInput('context_files') || '')
+        anthropicKey: getInput('anthropic_api_key'),
+        openaiKey: getInput('openai_api_key'),
+        defaultProvider: getInput('default_provider') || 'claude',
+        claudeModel: getInput('claude_model') || 'claude-sonnet-4-5-20250929',
+        codexModel: getInput('codex_model') || 'gpt-4o',
+        platform: getInput('platform') || 'forgejo',
+        platformToken: getInput('platform_token'),
+        platformUrl: getInput('platform_url'),
+        contextFiles: (getInput('context_files') || '')
             .split(',')
             .map(f => f.trim())
             .filter(Boolean),
