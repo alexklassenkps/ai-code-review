@@ -39,15 +39,11 @@ class ForgejoClient {
     }
 
     async getPRDiff(owner, repo, pr) {
-        const res = await fetch(`${this.baseUrl}/repos/${owner}/${repo}/pulls/${pr}`, {
-            headers: { ...this.headers, 'Accept': 'text/plain' },
+        const res = await fetch(`${this.baseUrl}/repos/${owner}/${repo}/pulls/${pr}.diff`, {
+            headers: { 'Authorization': `token ${this.headers.Authorization.split(' ')[1]}` },
         });
         if (!res.ok) throw new Error(`Failed to fetch PR diff: ${res.status}`);
         return res.text();
-    }
-
-    async getPRFiles(owner, repo, pr) {
-        return this.request('GET', `/repos/${owner}/${repo}/pulls/${pr}/files`);
     }
 
     async getPRInfo(owner, repo, pr) {
