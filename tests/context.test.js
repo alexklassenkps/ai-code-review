@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { loadContextFiles } = require('../src/context');
+const { loadContextFiles, loadContextFilesWithStatus } = require('../src/context');
 
 function makeTempDir() {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'ctx-test-'));
@@ -53,5 +53,17 @@ describe('loadContextFiles', () => {
 
         const result = loadContextFiles(['docs/guide.md'], dir);
         assert.match(result, /^## docs\/guide\.md\n/);
+    });
+});
+
+describe('loadContextFilesWithStatus', () => {
+    it('returns content plus included and missing files', () => {
+        const dir = makeTempDir();
+        fs.writeFileSync(path.join(dir, 'exists.md'), 'hello');
+
+        const result = loadContextFilesWithStatus(['exists.md', 'missing.md'], dir);
+        assert.equal(result.content, '## exists.md\n\nhello');
+        assert.deepEqual(result.includedFiles, ['exists.md']);
+        assert.deepEqual(result.missingFiles, ['missing.md']);
     });
 });

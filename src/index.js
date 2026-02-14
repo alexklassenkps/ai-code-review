@@ -7,7 +7,7 @@ const { getProvider } = require('./providers/registry');
 const { detectTrigger } = require('./trigger');
 const { parseReviewResponse } = require('./parser');
 const { formatInlineComment, buildSummaryComment } = require('./formatter');
-const { loadContextFiles } = require('./context');
+const { loadContextFilesWithStatus } = require('./context');
 
 // ─── Diff Annotation ────────────────────────────────────────────
 function annotateDiff(rawDiff) {
@@ -87,11 +87,13 @@ async function run() {
 
         // Load context files
         let context = '';
+        let contextFileStatus = null;
         if (config.contextFiles.length > 0) {
             const workDir = process.env.GITHUB_WORKSPACE || process.cwd();
-            context = loadContextFiles(config.contextFiles, workDir);
+            contextFileStatus = loadContextFilesWithStatus(config.contextFiles, workDir);
+            context = contextFileStatus.content;
             if (context) {
-                core.info(`Loaded ${config.contextFiles.length} context file(s)`);
+                core.info(`Loaded ${contextFileStatus.includedFiles.length}/${config.contextFiles.length} context file(s)`);
             }
         }
 
@@ -136,6 +138,11 @@ async function run() {
             review,
             triggerUser: comment.user.login,
             inlineSuccess,
+            contextFiles: contextFileStatus ? {
+                requestedFiles: config.contextFiles,
+                includedFiles: contextFileStatus.includedFiles,
+                missingFiles: contextFileStatus.missingFiles,
+            } : null,
         });
 
         await client.createComment(owner, repo, prNumber, summaryBody);

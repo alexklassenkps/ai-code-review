@@ -109,4 +109,23 @@ describe('buildSummaryComment', () => {
         });
         assert.match(result, /No issues found/);
     });
+
+    it('includes context files section with included and missing files', () => {
+        const result = buildSummaryComment({
+            providerName: 'Claude',
+            review: { summary: 'LGTM', comments: [] },
+            triggerUser: 'eve',
+            inlineSuccess: 0,
+            contextFiles: {
+                requestedFiles: ['ARCH.md', 'MISSING.md'],
+                includedFiles: ['ARCH.md'],
+                missingFiles: ['MISSING.md'],
+            },
+        });
+
+        assert.match(result, /\*\*Context Files\*\*/);
+        assert.match(result, /Requested: `ARCH\.md`, `MISSING\.md`/);
+        assert.match(result, /Included \(1\): `ARCH\.md`/);
+        assert.match(result, /Could not include \(1\): `MISSING\.md`/);
+    });
 });

@@ -25834,21 +25834,34 @@ module.exports = { getConfig };
 const fs = __nccwpck_require__(9896);
 const path = __nccwpck_require__(6928);
 
-function loadContextFiles(filePaths, workDir) {
+function loadContextFilesWithStatus(filePaths, workDir) {
     const sections = [];
+    const includedFiles = [];
+    const missingFiles = [];
+
     for (const filePath of filePaths) {
         const fullPath = path.resolve(workDir, filePath);
         try {
             const content = fs.readFileSync(fullPath, 'utf8');
             sections.push(`## ${filePath}\n\n${content}`);
+            includedFiles.push(filePath);
         } catch (e) {
-            sections.push(null);
+            missingFiles.push(filePath);
         }
     }
-    return sections.filter(Boolean).join('\n\n---\n\n');
+
+    return {
+        content: sections.join('\n\n---\n\n'),
+        includedFiles,
+        missingFiles,
+    };
 }
 
-module.exports = { loadContextFiles };
+function loadContextFiles(filePaths, workDir) {
+    return loadContextFilesWithStatus(filePaths, workDir).content;
+}
+
+module.exports = { loadContextFiles, loadContextFilesWithStatus };
 
 
 /***/ }),
@@ -25875,7 +25888,29 @@ function formatFallbackComment(comment) {
     return `${severityIcon(comment.severity)} **\`${comment.path}:${comment.line}\`** — ${comment.message}`;
 }
 
-function buildSummaryComment({ providerName, review, triggerUser, inlineSuccess }) {
+function formatFileList(files) {
+    return files.map(f => `\`${f}\``).join(', ');
+}
+
+function buildContextFilesSection(contextFiles) {
+    if (!contextFiles || !contextFiles.requestedFiles?.length) return '';
+
+    const included = contextFiles.includedFiles || [];
+    const missing = contextFiles.missingFiles || [];
+
+    let section = '\n**Context Files**\n\n';
+    section += `Requested: ${formatFileList(contextFiles.requestedFiles)}\n\n`;
+    section += included.length > 0
+        ? `Included (${included.length}): ${formatFileList(included)}\n\n`
+        : 'Included: none\n\n';
+    section += missing.length > 0
+        ? `Could not include (${missing.length}): ${formatFileList(missing)} (file not found or unreadable)\n`
+        : 'Could not include: none\n';
+
+    return section;
+}
+
+function buildSummaryComment({ providerName, review, triggerUser, inlineSuccess, contextFiles }) {
     let body = `### ${providerName} Code Review\n\n${review.summary}\n\n`;
 
     if (review.comments?.length > 0) {
@@ -25894,12 +25929,14 @@ function buildSummaryComment({ providerName, review, triggerUser, inlineSuccess 
         body += '✅ No issues found. The code looks good!\n';
     }
 
+    body += buildContextFilesSection(contextFiles);
     body += `\n---\n_Triggered by @${triggerUser} • Provider: ${providerName}_`;
 
     return body;
 }
 
 module.exports = { severityIcon, formatInlineComment, formatFallbackComment, buildSummaryComment };
+
 
 /***/ }),
 
@@ -25915,7 +25952,7 @@ const { getProvider } = __nccwpck_require__(8491);
 const { detectTrigger } = __nccwpck_require__(8199);
 const { parseReviewResponse } = __nccwpck_require__(6936);
 const { formatInlineComment, buildSummaryComment } = __nccwpck_require__(1925);
-const { loadContextFiles } = __nccwpck_require__(9020);
+const { loadContextFilesWithStatus } = __nccwpck_require__(9020);
 
 // ─── Diff Annotation ────────────────────────────────────────────
 function annotateDiff(rawDiff) {
@@ -25995,11 +26032,13 @@ async function run() {
 
         // Load context files
         let context = '';
+        let contextFileStatus = null;
         if (config.contextFiles.length > 0) {
             const workDir = process.env.GITHUB_WORKSPACE || process.cwd();
-            context = loadContextFiles(config.contextFiles, workDir);
+            contextFileStatus = loadContextFilesWithStatus(config.contextFiles, workDir);
+            context = contextFileStatus.content;
             if (context) {
-                core.info(`Loaded ${config.contextFiles.length} context file(s)`);
+                core.info(`Loaded ${contextFileStatus.includedFiles.length}/${config.contextFiles.length} context file(s)`);
             }
         }
 
@@ -26044,6 +26083,11 @@ async function run() {
             review,
             triggerUser: comment.user.login,
             inlineSuccess,
+            contextFiles: contextFileStatus ? {
+                requestedFiles: config.contextFiles,
+                includedFiles: contextFileStatus.includedFiles,
+                missingFiles: contextFileStatus.missingFiles,
+            } : null,
         });
 
         await client.createComment(owner, repo, prNumber, summaryBody);
