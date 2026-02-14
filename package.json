@@ -3,6 +3,6 @@
   "version": "1.0.0",
   "author": "Your Name <alexander.klassen@kps.com.com> (https://kps.com)",
   "dependencies": {
-    "@actions/core": "^3.0.0"
+    "@actions/core": "^1.11.1"
   }
 }
