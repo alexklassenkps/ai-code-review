@@ -25820,15 +25820,18 @@ function getEnvValueCaseInsensitive(envName) {
 
 function getInputOrEnv(inputName, envNames, fallback = '') {
     const inputValue = core.getInput(inputName);
-    if (inputValue) return inputValue;
+    if (inputValue) {
+        console.info(`value found for input variable "${inputName}"`)
+        return inputValue;
+    }
 
     for (const envName of envNames) {
         const envValue = getEnvValueCaseInsensitive(envName);
         if (envValue) {
-            console.info(`value found for ${envName}`)
+            console.info(`value found for env variable "${envName}"`)
             return envValue;
         } else {
-            console.info(`no value found for ${envName}`)
+            console.info(`no value found for env variable "${envName}"`)
         }
     }
 
