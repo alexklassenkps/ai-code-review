@@ -22,7 +22,7 @@ function formatFileList(files) {
 }
 
 function buildContextFilesSection(contextFiles) {
-    if (!contextFiles || !contextFiles.requestedFiles?.length) return '';
+    if (!contextFiles || !contextFiles.requestedFiles?.length) return 'No Context Files included';
 
     const included = contextFiles.includedFiles || [];
     const missing = contextFiles.missingFiles || [];
