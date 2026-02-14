@@ -25806,12 +25806,29 @@ module.exports = { getPlatformClient, registerPlatform };
 
 const core = __nccwpck_require__(2326);
 
+function getEnvValueCaseInsensitive(envName) {
+    if (!envName) return '';
+    if (process.env[envName]) return process.env[envName];
+
+    const target = envName.toLowerCase();
+    for (const [key, value] of Object.entries(process.env)) {
+        if (key.toLowerCase() === target && value) return value;
+    }
+
+    return '';
+}
+
 function getInputOrEnv(inputName, envNames, fallback = '') {
     const inputValue = core.getInput(inputName);
     if (inputValue) return inputValue;
 
     for (const envName of envNames) {
-        if (process.env[envName]) return process.env[envName];
+        const envValue = getEnvValueCaseInsensitive(envName);
+        if (envValue) {
+            return envValue;
+        } else {
+            console.info(`no value found for ${envName}`)
+        }
     }
 
     return fallback;

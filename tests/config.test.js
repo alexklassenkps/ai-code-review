@@ -19,6 +19,9 @@ const ENV_KEYS = [
     'INPUT_FORGEJO_TOKEN',
     'INPUT_FORGEJO_URL',
     'INPUT_CONTEXT_FILES',
+    'platform_token',
+    'platform_url',
+    'openai_api_key',
 ];
 
 describe('getConfig', () => {
@@ -64,5 +67,17 @@ describe('getConfig', () => {
 
         assert.equal(config.platformToken, 'token-from-input');
         assert.equal(config.platformUrl, 'https://input.example.com');
+    });
+
+    it('accepts lowercase env variable names', () => {
+        process.env.platform_token = 'token-lowercase';
+        process.env.platform_url = 'https://lowercase.example.com/';
+        process.env.openai_api_key = 'openai-lowercase';
+
+        const config = getConfig();
+
+        assert.equal(config.platformToken, 'token-lowercase');
+        assert.equal(config.platformUrl, 'https://lowercase.example.com');
+        assert.equal(config.openaiKey, 'openai-lowercase');
     });
 });
