@@ -25806,51 +25806,17 @@ module.exports = { getPlatformClient, registerPlatform };
 
 const core = __nccwpck_require__(2326);
 
-function getEnvValueCaseInsensitive(envName) {
-    if (!envName) return '';
-    if (process.env[envName]) return process.env[envName];
-
-    const target = envName.toLowerCase();
-    for (const [key, value] of Object.entries(process.env)) {
-        if (key.toLowerCase() === target && value) return value;
-    }
-
-    return '';
-}
-
-function getInputOrEnv(inputName, envNames, fallback = '') {
-    const inputValue = core.getInput(inputName);
-    if (inputValue) {
-        console.info(`value found for input variable "${inputName}"`)
-        return inputValue;
-    }
-
-    for (const envName of envNames) {
-        const envValue = getEnvValueCaseInsensitive(envName);
-        if (envValue) {
-            console.info(`value found for env variable "${envName}"`)
-            return envValue;
-        } else {
-            console.info(`no value found for env variable "${envName}"`)
-        }
-    }
-
-    return fallback;
-}
-
 function getConfig() {
-    const platformUrl = getInputOrEnv('platform_url', ['PLATFORM_URL', 'FORGEJO_URL'], getInputOrEnv('forgejo_url', ['FORGEJO_URL'], ''));
-
     return {
-        anthropicKey: getInputOrEnv('anthropic_api_key', ['ANTHROPIC_API_KEY']),
-        openaiKey: getInputOrEnv('openai_api_key', ['OPENAI_API_KEY']),
-        defaultProvider: getInputOrEnv('default_provider', ['DEFAULT_PROVIDER'], 'claude'),
-        claudeModel: getInputOrEnv('claude_model', ['CLAUDE_MODEL'], 'claude-sonnet-4-5-20250929'),
-        codexModel: getInputOrEnv('codex_model', ['CODEX_MODEL'], 'gpt-4o'),
-        platform: getInputOrEnv('platform', ['PLATFORM'], 'forgejo'),
-        platformToken: getInputOrEnv('platform_token', ['PLATFORM_TOKEN', 'FORGEJO_TOKEN'], getInputOrEnv('forgejo_token', ['FORGEJO_TOKEN'])),
-        platformUrl: (platformUrl || '').replace(/\/$/, ''),
-        contextFiles: getInputOrEnv('context_files', ['CONTEXT_FILES'], 'DEFAULT_CONTEXT.md')
+        anthropicKey: core.getInput('anthropic_api_key'),
+        openaiKey: core.getInput('openai_api_key'),
+        defaultProvider: core.getInput('default_provider') || 'claude',
+        claudeModel: core.getInput('claude_model') || 'claude-sonnet-4-5-20250929',
+        codexModel: core.getInput('codex_model') || 'gpt-4o',
+        platform: core.getInput('platform') || 'forgejo',
+        platformToken: core.getInput('platform_token') || core.getInput('forgejo_token'),
+        platformUrl: (core.getInput('platform_url') || core.getInput('forgejo_url')).replace(/\/$/, ''),
+        contextFiles: (core.getInput('context_files') || '')
             .split(',')
             .map(f => f.trim())
             .filter(Boolean),
