@@ -5,10 +5,11 @@ function getConfig() {
         anthropicKey: core.getInput('anthropic_api_key'),
         openaiKey: core.getInput('openai_api_key'),
         defaultProvider: core.getInput('default_provider') || 'claude',
-        claudeModel: core.getInput('claude_model') || 'claude-sonnet-4-20250514',
+        claudeModel: core.getInput('claude_model') || 'claude-sonnet-4-5-20250929',
         codexModel: core.getInput('codex_model') || 'gpt-4o',
-        forgejoToken: core.getInput('forgejo_token'),
-        forgejoUrl: core.getInput('forgejo_url').replace(/\/$/, ''),
+        platform: core.getInput('platform') || 'forgejo',
+        platformToken: core.getInput('platform_token') || core.getInput('forgejo_token'),
+        platformUrl: (core.getInput('platform_url') || core.getInput('forgejo_url')).replace(/\/$/, ''),
     };
 }
 

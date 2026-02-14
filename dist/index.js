@@ -25643,18 +25643,87 @@ module.exports = {
 
 /***/ }),
 
-/***/ 8496:
+/***/ 9207:
 /***/ ((module) => {
 
-class ForgejoClient {
+class GitPlatformClient {
     constructor(url, token) {
-        this.baseUrl = `${url}/api/v1`;
+        this.url = url;
         this.token = token;
+    }
+
+    get platformName() {
+        throw new Error('platformName must be implemented');
+    }
+
+    parseEventContext(event, env) {
+        throw new Error('parseEventContext() must be implemented');
+    }
+
+    async getPRDiff(owner, repo, pr) {
+        throw new Error('getPRDiff() must be implemented');
+    }
+
+    async getPRInfo(owner, repo, pr) {
+        throw new Error('getPRInfo() must be implemented');
+    }
+
+    async createComment(owner, repo, pr, body) {
+        throw new Error('createComment() must be implemented');
+    }
+
+    async createReviewComment(owner, repo, pr, { body, path, line }) {
+        throw new Error('createReviewComment() must be implemented');
+    }
+
+    async addReaction(owner, repo, commentId, reaction) {
+        throw new Error('addReaction() must be implemented');
+    }
+}
+
+module.exports = { GitPlatformClient };
+
+
+/***/ }),
+
+/***/ 8496:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+const { GitPlatformClient } = __nccwpck_require__(9207);
+
+class ForgejoClient extends GitPlatformClient {
+    constructor(url, token) {
+        super(url, token);
+        this.baseUrl = `${url}/api/v1`;
         this.headers = {
             'Authorization': `token ${token}`,
             'Content-Type': 'application/json',
             'Accept': 'application/json',
         };
+    }
+
+    get platformName() {
+        return 'Forgejo';
+    }
+
+    parseEventContext(event, env) {
+        if (!event.issue?.pull_request && !event.pull_request) {
+            return null;
+        }
+
+        const comment = event.comment;
+        if (!comment) {
+            return null;
+        }
+
+        const [owner, repo] = (env.GITHUB_REPOSITORY || event.repository?.full_name || '').split('/');
+        const prNumber = event.issue?.number || event.pull_request?.number;
+
+        if (!owner || !repo || !prNumber) {
+            return null;
+        }
+
+        return { owner, repo, prNumber, comment };
     }
 
     async request(method, path, body) {
@@ -25686,7 +25755,7 @@ class ForgejoClient {
         return this.request('POST', `/repos/${owner}/${repo}/issues/${pr}/comments`, { body });
     }
 
-    async createReviewComment(owner, repo, pr, { body, path, line, side = 'RIGHT' }) {
+    async createReviewComment(owner, repo, pr, { body, path, line }) {
         return this.request('POST', `/repos/${owner}/${repo}/pulls/${pr}/reviews`, {
             event: 'COMMENT',
             body: '',
@@ -25703,6 +25772,33 @@ class ForgejoClient {
 
 module.exports = { ForgejoClient };
 
+
+/***/ }),
+
+/***/ 6313:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+const { ForgejoClient } = __nccwpck_require__(8496);
+
+const platforms = {
+    forgejo: ForgejoClient,
+};
+
+function getPlatformClient(name, url, token) {
+    const Client = platforms[name];
+    if (!Client) {
+        throw new Error(`Unknown platform: "${name}". Available: ${Object.keys(platforms).join(', ')}`);
+    }
+    return new Client(url, token);
+}
+
+function registerPlatform(name, clientClass) {
+    platforms[name] = clientClass;
+}
+
+module.exports = { getPlatformClient, registerPlatform };
+
+
 /***/ }),
 
 /***/ 3117:
@@ -25715,14 +25811,16 @@ function getConfig() {
         anthropicKey: core.getInput('anthropic_api_key'),
         openaiKey: core.getInput('openai_api_key'),
         defaultProvider: core.getInput('default_provider') || 'claude',
-        claudeModel: core.getInput('claude_model') || 'claude-sonnet-4-20250514',
+        claudeModel: core.getInput('claude_model') || 'claude-sonnet-4-5-20250929',
         codexModel: core.getInput('codex_model') || 'gpt-4o',
-        forgejoToken: core.getInput('forgejo_token'),
-        forgejoUrl: core.getInput('forgejo_url').replace(/\/$/, ''),
+        platform: core.getInput('platform') || 'forgejo',
+        platformToken: core.getInput('platform_token') || core.getInput('forgejo_token'),
+        platformUrl: (core.getInput('platform_url') || core.getInput('forgejo_url')).replace(/\/$/, ''),
     };
 }
 
 module.exports = { getConfig };
+
 
 /***/ }),
 
@@ -25773,6 +25871,162 @@ function buildSummaryComment({ providerName, review, triggerUser, inlineSuccess 
 }
 
 module.exports = { severityIcon, formatInlineComment, formatFallbackComment, buildSummaryComment };
+
+/***/ }),
+
+/***/ 1511:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+// src/index.js
+const fs = __nccwpck_require__(9896);
+const core = __nccwpck_require__(2326);
+const { getConfig } = __nccwpck_require__(3117);
+const { getPlatformClient } = __nccwpck_require__(6313);
+const { getProvider } = __nccwpck_require__(8491);
+const { detectTrigger } = __nccwpck_require__(8199);
+const { parseReviewResponse } = __nccwpck_require__(6936);
+const { formatInlineComment, buildSummaryComment } = __nccwpck_require__(1925);
+
+// ─── Diff Annotation ────────────────────────────────────────────
+function annotateDiff(rawDiff) {
+    const lines = rawDiff.split('\n');
+    const result = [];
+    let newLine = 0;
+
+    for (const line of lines) {
+        const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+        if (hunkMatch) {
+            newLine = parseInt(hunkMatch[1], 10);
+            result.push(line);
+        } else if (line.startsWith('-')) {
+            result.push(`     ${line}`);
+        } else if (line.startsWith('+')) {
+            result.push(`[L${newLine}] ${line}`);
+            newLine++;
+        } else if (line.startsWith(' ') || line === '') {
+            result.push(`[L${newLine}] ${line}`);
+            newLine++;
+        } else {
+            // file headers (diff --git, index, ---, +++) or other metadata
+            result.push(line);
+        }
+    }
+    return result.join('\n');
+}
+
+// ─── Main ───────────────────────────────────────────────────────
+async function run() {
+    try {
+        const config = getConfig();
+        const eventPath = process.env.GITHUB_EVENT_PATH;
+        const event = JSON.parse(fs.readFileSync(eventPath, 'utf8'));
+
+        const client = getPlatformClient(config.platform, config.platformUrl, config.platformToken);
+
+        const ctx = client.parseEventContext(event, process.env);
+        if (!ctx) {
+            core.info('Not a PR comment event or missing context, skipping.');
+            return;
+        }
+
+        const { owner, repo, prNumber, comment } = ctx;
+
+        const trigger = detectTrigger(comment.body);
+        if (!trigger) {
+            core.info('No @Claude or @Codex mention found, skipping.');
+            return;
+        }
+
+        core.info(`Triggered by @${trigger.provider} in comment #${comment.id}`);
+
+        // React to the triggering comment with eyes emoji
+        try {
+            await client.addReaction(owner, repo, comment.id, 'eyes');
+        } catch (e) {
+            core.warning(`Could not add reaction: ${e.message}`);
+        }
+
+        // Fetch PR diff
+        core.info(`Fetching diff for ${owner}/${repo}#${prNumber}...`);
+        const diff = await client.getPRDiff(owner, repo, prNumber);
+
+        if (!diff.trim()) {
+            await client.createComment(owner, repo, prNumber,
+                `👀 @${comment.user.login} I couldn't find any code changes to review in this PR.`);
+            return;
+        }
+
+        // Annotate diff with line numbers and truncate if too large
+        const annotatedDiff = annotateDiff(diff);
+        const maxDiffLength = 30000;
+        const truncatedDiff = annotatedDiff.length > maxDiffLength
+            ? annotatedDiff.substring(0, maxDiffLength) + '\n\n... (diff truncated due to size)'
+            : annotatedDiff;
+
+        // Call AI provider
+        core.info(`Calling ${trigger.provider} for review...`);
+        const provider = getProvider(trigger.provider, config);
+        const rawResponse = await provider.review(truncatedDiff, trigger.message);
+
+        // Parse AI response
+        let review;
+        try {
+            review = parseReviewResponse(rawResponse);
+        } catch (e) {
+            core.warning(`Failed to parse AI response as JSON, posting as plain comment.`);
+            await client.createComment(owner, repo, prNumber,
+                `### 🤖 AI Code Review (${trigger.provider})\n\n${rawResponse}`);
+            return;
+        }
+
+        // Try to post inline comments, track which succeeded
+        let inlineSuccess = 0;
+        if (review.comments?.length > 0) {
+            for (const c of review.comments) {
+                try {
+                    await client.createReviewComment(owner, repo, prNumber, {
+                        body: formatInlineComment(c),
+                        path: c.path,
+                        line: c.line,
+                    });
+                    c._inlinePosted = true;
+                    inlineSuccess++;
+                } catch (e) {
+                    // Will be included in summary fallback
+                }
+            }
+        }
+
+        // Post summary comment
+        const providerLabel = trigger.provider === 'claude' ? '🧠 Claude' : '🤖 Codex';
+        const summaryBody = buildSummaryComment({
+            providerName: providerLabel,
+            review,
+            triggerUser: comment.user.login,
+            inlineSuccess,
+        });
+
+        await client.createComment(owner, repo, prNumber, summaryBody);
+
+        // React with rocket on success
+        try {
+            await client.addReaction(owner, repo, comment.id, 'rocket');
+        } catch (e) {
+            core.warning(`Could not add reaction: ${e.message}`);
+        }
+
+        core.info('Review complete!');
+    } catch (error) {
+        core.setFailed(`Action failed: ${error.message}`);
+    }
+}
+
+if (require.main === require.cache[eval('__filename')]) {
+    run();
+}
+
+module.exports = { annotateDiff, run };
+
 
 /***/ }),
 
@@ -27900,163 +28154,12 @@ module.exports = parseParams
 /******/ 	if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = __dirname + "/";
 /******/ 	
 /************************************************************************/
-var __webpack_exports__ = {};
-// src/index.js
-const core = __nccwpck_require__(2326);
-const { getConfig } = __nccwpck_require__(3117);
-const { ForgejoClient } = __nccwpck_require__(8496);
-const { getProvider } = __nccwpck_require__(8491);
-const { detectTrigger } = __nccwpck_require__(8199);
-const { parseReviewResponse } = __nccwpck_require__(6936);
-const { formatInlineComment, buildSummaryComment } = __nccwpck_require__(1925);
-
-// ─── Diff Annotation ────────────────────────────────────────────
-function annotateDiff(rawDiff) {
-    const lines = rawDiff.split('\n');
-    const result = [];
-    let newLine = 0;
-
-    for (const line of lines) {
-        const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-        if (hunkMatch) {
-            newLine = parseInt(hunkMatch[1], 10);
-            result.push(line);
-        } else if (line.startsWith('-')) {
-            result.push(`     ${line}`);
-        } else if (line.startsWith('+')) {
-            result.push(`[L${newLine}] ${line}`);
-            newLine++;
-        } else if (line.startsWith(' ') || line === '') {
-            result.push(`[L${newLine}] ${line}`);
-            newLine++;
-        } else {
-            // file headers (diff --git, index, ---, +++) or other metadata
-            result.push(line);
-        }
-    }
-    return result.join('\n');
-}
-
-// ─── Main ───────────────────────────────────────────────────────
-async function run() {
-    try {
-        const config = getConfig();
-        const eventPath = process.env.GITHUB_EVENT_PATH;
-        const event = require(eventPath);
-
-        // Validate this is a comment event on a PR
-        if (!event.issue?.pull_request && !event.pull_request) {
-            core.info('Not a PR comment event, skipping.');
-            return;
-        }
-
-        const comment = event.comment;
-        if (!comment) {
-            core.info('No comment found in event, skipping.');
-            return;
-        }
-
-        const trigger = detectTrigger(comment.body);
-        if (!trigger) {
-            core.info('No @Claude or @Codex mention found, skipping.');
-            return;
-        }
-
-        core.info(`Triggered by @${trigger.provider} in comment #${comment.id}`);
-
-        // Extract repo info
-        const [owner, repo] = (process.env.GITHUB_REPOSITORY || event.repository?.full_name || '').split('/');
-        const prNumber = event.issue?.number || event.pull_request?.number;
-
-        if (!owner || !repo || !prNumber) {
-            throw new Error('Could not determine repository or PR number from event context');
-        }
-
-        const forgejo = new ForgejoClient(config.forgejoUrl, config.forgejoToken);
-
-        // React to the triggering comment with eyes emoji
-        try {
-            await forgejo.addReaction(owner, repo, comment.id, 'eyes');
-        } catch (e) {
-            core.warning(`Could not add reaction: ${e.message}`);
-        }
-
-        // Fetch PR diff
-        core.info(`Fetching diff for ${owner}/${repo}#${prNumber}...`);
-        const diff = await forgejo.getPRDiff(owner, repo, prNumber);
-
-        if (!diff.trim()) {
-            await forgejo.createComment(owner, repo, prNumber,
-                `👀 @${comment.user.login} I couldn't find any code changes to review in this PR.`);
-            return;
-        }
-
-        // Annotate diff with line numbers and truncate if too large
-        const annotatedDiff = annotateDiff(diff);
-        const maxDiffLength = 30000;
-        const truncatedDiff = annotatedDiff.length > maxDiffLength
-            ? annotatedDiff.substring(0, maxDiffLength) + '\n\n... (diff truncated due to size)'
-            : annotatedDiff;
-
-        // Call AI provider
-        core.info(`Calling ${trigger.provider} for review...`);
-        const provider = getProvider(trigger.provider, config);
-        const rawResponse = await provider.review(truncatedDiff, trigger.message);
-
-        // Parse AI response
-        let review;
-        try {
-            review = parseReviewResponse(rawResponse);
-        } catch (e) {
-            core.warning(`Failed to parse AI response as JSON, posting as plain comment.`);
-            await forgejo.createComment(owner, repo, prNumber,
-                `### 🤖 AI Code Review (${trigger.provider})\n\n${rawResponse}`);
-            return;
-        }
-
-        // Try to post inline comments, track which succeeded
-        let inlineSuccess = 0;
-        if (review.comments?.length > 0) {
-            for (const c of review.comments) {
-                try {
-                    await forgejo.createReviewComment(owner, repo, prNumber, {
-                        body: formatInlineComment(c),
-                        path: c.path,
-                        line: c.line,
-                    });
-                    c._inlinePosted = true;
-                    inlineSuccess++;
-                } catch (e) {
-                    // Will be included in summary fallback
-                }
-            }
-        }
-
-        // Post summary comment
-        const providerLabel = trigger.provider === 'claude' ? '🧠 Claude' : '🤖 Codex';
-        const summaryBody = buildSummaryComment({
-            providerName: providerLabel,
-            review,
-            triggerUser: comment.user.login,
-            inlineSuccess,
-        });
-
-        await forgejo.createComment(owner, repo, prNumber, summaryBody);
-
-        // React with rocket on success
-        try {
-            await forgejo.addReaction(owner, repo, comment.id, 'rocket');
-        } catch (e) {
-            core.warning(`Could not add reaction: ${e.message}`);
-        }
-
-        core.info('Review complete!');
-    } catch (error) {
-        core.setFailed(`Action failed: ${error.message}`);
-    }
-}
-
-run();
-module.exports = __webpack_exports__;
+/******/ 	
+/******/ 	// startup
+/******/ 	// Load entry module and return exports
+/******/ 	// This entry module is referenced by other modules so it can't be inlined
+/******/ 	var __webpack_exports__ = __nccwpck_require__(1511);
+/******/ 	module.exports = __webpack_exports__;
+/******/ 	
 /******/ })()
 ;

@@ -1,7 +1,8 @@
 // src/index.js
+const fs = require('fs');
 const core = require('@actions/core');
 const { getConfig } = require('./config');
-const { ForgejoClient } = require('./clients/forgejo');
+const { getPlatformClient } = require('./clients/registry');
 const { getProvider } = require('./providers/registry');
 const { detectTrigger } = require('./trigger');
 const { parseReviewResponse } = require('./parser');
@@ -39,19 +40,17 @@ async function run() {
     try {
         const config = getConfig();
         const eventPath = process.env.GITHUB_EVENT_PATH;
-        const event = require(eventPath);
+        const event = JSON.parse(fs.readFileSync(eventPath, 'utf8'));
 
-        // Validate this is a comment event on a PR
-        if (!event.issue?.pull_request && !event.pull_request) {
-            core.info('Not a PR comment event, skipping.');
+        const client = getPlatformClient(config.platform, config.platformUrl, config.platformToken);
+
+        const ctx = client.parseEventContext(event, process.env);
+        if (!ctx) {
+            core.info('Not a PR comment event or missing context, skipping.');
             return;
         }
 
-        const comment = event.comment;
-        if (!comment) {
-            core.info('No comment found in event, skipping.');
-            return;
-        }
+        const { owner, repo, prNumber, comment } = ctx;
 
         const trigger = detectTrigger(comment.body);
         if (!trigger) {
@@ -61,29 +60,19 @@ async function run() {
 
         core.info(`Triggered by @${trigger.provider} in comment #${comment.id}`);
 
-        // Extract repo info
-        const [owner, repo] = (process.env.GITHUB_REPOSITORY || event.repository?.full_name || '').split('/');
-        const prNumber = event.issue?.number || event.pull_request?.number;
-
-        if (!owner || !repo || !prNumber) {
-            throw new Error('Could not determine repository or PR number from event context');
-        }
-
-        const forgejo = new ForgejoClient(config.forgejoUrl, config.forgejoToken);
-
         // React to the triggering comment with eyes emoji
         try {
-            await forgejo.addReaction(owner, repo, comment.id, 'eyes');
+            await client.addReaction(owner, repo, comment.id, 'eyes');
         } catch (e) {
             core.warning(`Could not add reaction: ${e.message}`);
         }
 
         // Fetch PR diff
         core.info(`Fetching diff for ${owner}/${repo}#${prNumber}...`);
-        const diff = await forgejo.getPRDiff(owner, repo, prNumber);
+        const diff = await client.getPRDiff(owner, repo, prNumber);
 
         if (!diff.trim()) {
-            await forgejo.createComment(owner, repo, prNumber,
+            await client.createComment(owner, repo, prNumber,
                 `👀 @${comment.user.login} I couldn't find any code changes to review in this PR.`);
             return;
         }
@@ -106,7 +95,7 @@ async function run() {
             review = parseReviewResponse(rawResponse);
         } catch (e) {
             core.warning(`Failed to parse AI response as JSON, posting as plain comment.`);
-            await forgejo.createComment(owner, repo, prNumber,
+            await client.createComment(owner, repo, prNumber,
                 `### 🤖 AI Code Review (${trigger.provider})\n\n${rawResponse}`);
             return;
         }
@@ -116,7 +105,7 @@ async function run() {
         if (review.comments?.length > 0) {
             for (const c of review.comments) {
                 try {
-                    await forgejo.createReviewComment(owner, repo, prNumber, {
+                    await client.createReviewComment(owner, repo, prNumber, {
                         body: formatInlineComment(c),
                         path: c.path,
                         line: c.line,
@@ -138,11 +127,11 @@ async function run() {
             inlineSuccess,
         });
 
-        await forgejo.createComment(owner, repo, prNumber, summaryBody);
+        await client.createComment(owner, repo, prNumber, summaryBody);
 
         // React with rocket on success
         try {
-            await forgejo.addReaction(owner, repo, comment.id, 'rocket');
+            await client.addReaction(owner, repo, comment.id, 'rocket');
         } catch (e) {
             core.warning(`Could not add reaction: ${e.message}`);
         }
@@ -153,4 +142,8 @@ async function run() {
     }
 }
 
-run();
+if (require.main === module) {
+    run();
+}
+
+module.exports = { annotateDiff, run };

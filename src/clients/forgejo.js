@@ -1,12 +1,38 @@
-class ForgejoClient {
+const { GitPlatformClient } = require('./base');
+
+class ForgejoClient extends GitPlatformClient {
     constructor(url, token) {
+        super(url, token);
         this.baseUrl = `${url}/api/v1`;
-        this.token = token;
         this.headers = {
             'Authorization': `token ${token}`,
             'Content-Type': 'application/json',
             'Accept': 'application/json',
         };
+    }
+
+    get platformName() {
+        return 'Forgejo';
+    }
+
+    parseEventContext(event, env) {
+        if (!event.issue?.pull_request && !event.pull_request) {
+            return null;
+        }
+
+        const comment = event.comment;
+        if (!comment) {
+            return null;
+        }
+
+        const [owner, repo] = (env.GITHUB_REPOSITORY || event.repository?.full_name || '').split('/');
+        const prNumber = event.issue?.number || event.pull_request?.number;
+
+        if (!owner || !repo || !prNumber) {
+            return null;
+        }
+
+        return { owner, repo, prNumber, comment };
     }
 
     async request(method, path, body) {
@@ -38,7 +64,7 @@ class ForgejoClient {
         return this.request('POST', `/repos/${owner}/${repo}/issues/${pr}/comments`, { body });
     }
 
-    async createReviewComment(owner, repo, pr, { body, path, line, side = 'RIGHT' }) {
+    async createReviewComment(owner, repo, pr, { body, path, line }) {
         return this.request('POST', `/repos/${owner}/${repo}/pulls/${pr}/reviews`, {
             event: 'COMMENT',
             body: '',

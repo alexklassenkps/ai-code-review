@@ -21,12 +21,22 @@ inputs:
     description: 'OpenAI model to use'
     required: false
     default: 'gpt-4o'
+  platform:
+    description: 'Git platform type (forgejo, github, gitlab, etc.)'
+    required: false
+    default: 'forgejo'
+  platform_token:
+    description: 'Git platform API token with repo permissions'
+    required: false
+  platform_url:
+    description: 'Git platform instance URL (e.g. https://codeberg.org)'
+    required: false
   forgejo_token:
-    description: 'Forgejo API token with repo permissions'
-    required: true
+    description: 'Deprecated: use platform_token instead. Forgejo API token with repo permissions.'
+    required: false
   forgejo_url:
-    description: 'Forgejo instance URL (e.g. https://codeberg.org)'
-    required: true
+    description: 'Deprecated: use platform_url instead. Forgejo instance URL.'
+    required: false
 
 runs:
   using: 'node20'
