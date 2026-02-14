@@ -27626,6 +27626,33 @@ class ForgejoClient {
     }
 }
 
+// ─── Diff Annotation ────────────────────────────────────────────
+function annotateDiff(rawDiff) {
+    const lines = rawDiff.split('\n');
+    const result = [];
+    let newLine = 0;
+
+    for (const line of lines) {
+        const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+        if (hunkMatch) {
+            newLine = parseInt(hunkMatch[1], 10);
+            result.push(line);
+        } else if (line.startsWith('-')) {
+            result.push(`     ${line}`);
+        } else if (line.startsWith('+')) {
+            result.push(`[L${newLine}] ${line}`);
+            newLine++;
+        } else if (line.startsWith(' ') || line === '') {
+            result.push(`[L${newLine}] ${line}`);
+            newLine++;
+        } else {
+            // file headers (diff --git, index, ---, +++) or other metadata
+            result.push(line);
+        }
+    }
+    return result.join('\n');
+}
+
 // ─── AI Providers ───────────────────────────────────────────────
 const SYSTEM_PROMPT = `You are an expert code reviewer. Review the following pull request diff and provide constructive feedback.
 
@@ -27649,10 +27676,8 @@ Respond in the following JSON format:
   ]
 }
 
-IMPORTANT: For "line", use the actual line number in the NEW version of the file.
-The diff uses unified format with @@ -old_start,old_count +new_start,new_count @@ headers.
-Count from new_start to determine the correct line number for added (+) and context lines.
-Do NOT use the diff hunk position — use the real line number as it appears in the new file.
+IMPORTANT: Each line in the diff is prefixed with [L<number>] showing the actual line number in the new file.
+Use EXACTLY the number from the [L<number>] prefix for the "line" field. Do not calculate line numbers yourself.
 
 Only return valid JSON. No markdown fences.`;
 
@@ -27785,11 +27810,12 @@ async function run() {
             return;
         }
 
-        // Truncate diff if too large (stay within token limits)
+        // Annotate diff with line numbers and truncate if too large
+        const annotatedDiff = annotateDiff(diff);
         const maxDiffLength = 30000;
-        const truncatedDiff = diff.length > maxDiffLength
-            ? diff.substring(0, maxDiffLength) + '\n\n... (diff truncated due to size)'
-            : diff;
+        const truncatedDiff = annotatedDiff.length > maxDiffLength
+            ? annotatedDiff.substring(0, maxDiffLength) + '\n\n... (diff truncated due to size)'
+            : annotatedDiff;
 
         // Call AI provider
         core.info(`Calling ${trigger.provider} for review...`);
