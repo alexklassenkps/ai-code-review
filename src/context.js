@@ -15,7 +15,7 @@ function loadContextFilesWithStatus(filePaths, workDir) {
             includedFiles.push(filePath);
         } catch (e) {
             missingFiles.push(filePath);
-            console.info(`could not load "${fullPath}"`)
+            console.error(`could not load "${fullPath}, error: ${e}"`)
         }
     }
 
