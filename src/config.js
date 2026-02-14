@@ -11,10 +11,6 @@ function getConfig() {
         platformToken: core.getInput('platform_token') || core.getInput('forgejo_token'),
         platformUrl: (core.getInput('platform_url') || core.getInput('forgejo_url')).replace(/\/$/, ''),
         contextFiles: (core.getInput('context_files') || '')
-            .map(f => {
-                core.info(f);
-                return f;
-            })
             .split(',')
             .map(f => f.trim())
             .filter(Boolean),
