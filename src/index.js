@@ -7,6 +7,7 @@ const { getProvider } = require('./providers/registry');
 const { detectTrigger } = require('./trigger');
 const { parseReviewResponse } = require('./parser');
 const { formatInlineComment, buildSummaryComment } = require('./formatter');
+const { loadContextFiles } = require('./context');
 
 // ─── Diff Annotation ────────────────────────────────────────────
 function annotateDiff(rawDiff) {
@@ -84,10 +85,20 @@ async function run() {
             ? annotatedDiff.substring(0, maxDiffLength) + '\n\n... (diff truncated due to size)'
             : annotatedDiff;
 
+        // Load context files
+        let context = '';
+        if (config.contextFiles.length > 0) {
+            const workDir = process.env.GITHUB_WORKSPACE || process.cwd();
+            context = loadContextFiles(config.contextFiles, workDir);
+            if (context) {
+                core.info(`Loaded ${config.contextFiles.length} context file(s)`);
+            }
+        }
+
         // Call AI provider
         core.info(`Calling ${trigger.provider} for review...`);
         const provider = getProvider(trigger.provider, config);
-        const rawResponse = await provider.review(truncatedDiff, trigger.message);
+        const rawResponse = await provider.review(truncatedDiff, trigger.message, context);
 
         // Parse AI response
         let review;

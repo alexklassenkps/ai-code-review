@@ -25816,10 +25816,39 @@ function getConfig() {
         platform: core.getInput('platform') || 'forgejo',
         platformToken: core.getInput('platform_token') || core.getInput('forgejo_token'),
         platformUrl: (core.getInput('platform_url') || core.getInput('forgejo_url')).replace(/\/$/, ''),
+        contextFiles: (core.getInput('context_files') || '')
+            .split(',')
+            .map(f => f.trim())
+            .filter(Boolean),
     };
 }
 
 module.exports = { getConfig };
+
+
+/***/ }),
+
+/***/ 9020:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+const fs = __nccwpck_require__(9896);
+const path = __nccwpck_require__(6928);
+
+function loadContextFiles(filePaths, workDir) {
+    const sections = [];
+    for (const filePath of filePaths) {
+        const fullPath = path.resolve(workDir, filePath);
+        try {
+            const content = fs.readFileSync(fullPath, 'utf8');
+            sections.push(`## ${filePath}\n\n${content}`);
+        } catch (e) {
+            sections.push(null);
+        }
+    }
+    return sections.filter(Boolean).join('\n\n---\n\n');
+}
+
+module.exports = { loadContextFiles };
 
 
 /***/ }),
@@ -25886,6 +25915,7 @@ const { getProvider } = __nccwpck_require__(8491);
 const { detectTrigger } = __nccwpck_require__(8199);
 const { parseReviewResponse } = __nccwpck_require__(6936);
 const { formatInlineComment, buildSummaryComment } = __nccwpck_require__(1925);
+const { loadContextFiles } = __nccwpck_require__(9020);
 
 // ─── Diff Annotation ────────────────────────────────────────────
 function annotateDiff(rawDiff) {
@@ -25963,10 +25993,20 @@ async function run() {
             ? annotatedDiff.substring(0, maxDiffLength) + '\n\n... (diff truncated due to size)'
             : annotatedDiff;
 
+        // Load context files
+        let context = '';
+        if (config.contextFiles.length > 0) {
+            const workDir = process.env.GITHUB_WORKSPACE || process.cwd();
+            context = loadContextFiles(config.contextFiles, workDir);
+            if (context) {
+                core.info(`Loaded ${config.contextFiles.length} context file(s)`);
+            }
+        }
+
         // Call AI provider
         core.info(`Calling ${trigger.provider} for review...`);
         const provider = getProvider(trigger.provider, config);
-        const rawResponse = await provider.review(truncatedDiff, trigger.message);
+        const rawResponse = await provider.review(truncatedDiff, trigger.message, context);
 
         // Parse AI response
         let review;
@@ -26088,8 +26128,12 @@ class LLMProvider {
         throw new Error('validateConfig() must be implemented');
     }
 
-    buildUserMessage(diff, userMessage) {
-        return `${userMessage ? `User request: ${userMessage}\n\n` : ''}Pull Request Diff:\n\`\`\`\n${diff}\n\`\`\``;
+    buildUserMessage(diff, userMessage, context) {
+        let msg = '';
+        if (context) msg += `Project Context:\n\n${context}\n\n`;
+        if (userMessage) msg += `User request: ${userMessage}\n\n`;
+        msg += `Pull Request Diff:\n\`\`\`\n${diff}\n\`\`\``;
+        return msg;
     }
 
     async review(diff, userMessage) {
@@ -26114,7 +26158,7 @@ class ClaudeProvider extends LLMProvider {
         }
     }
 
-    async review(diff, userMessage) {
+    async review(diff, userMessage, context) {
         this.validateConfig();
 
         const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -26130,7 +26174,7 @@ class ClaudeProvider extends LLMProvider {
                 system: REVIEW_PROMPT,
                 messages: [{
                     role: 'user',
-                    content: this.buildUserMessage(diff, userMessage),
+                    content: this.buildUserMessage(diff, userMessage, context),
                 }],
             }),
         });
@@ -26162,7 +26206,7 @@ class OpenAIProvider extends LLMProvider {
         }
     }
 
-    async review(diff, userMessage) {
+    async review(diff, userMessage, context) {
         this.validateConfig();
 
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -26177,7 +26221,7 @@ class OpenAIProvider extends LLMProvider {
                     { role: 'system', content: REVIEW_PROMPT },
                     {
                         role: 'user',
-                        content: this.buildUserMessage(diff, userMessage),
+                        content: this.buildUserMessage(diff, userMessage, context),
                     },
                 ],
                 max_tokens: 4096,

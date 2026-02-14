@@ -37,6 +37,10 @@ inputs:
   forgejo_url:
     description: 'Deprecated: use platform_url instead. Forgejo instance URL.'
     required: false
+  context_files:
+    description: 'Comma-separated list of file paths (relative to repo root) to include as context for the AI reviewer (e.g. ARCHITECTURE.md,REVIEW_HINTS.md)'
+    required: false
+    default: ''
 
 runs:
   using: 'node20'

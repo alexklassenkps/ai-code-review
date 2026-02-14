@@ -43,4 +43,30 @@ describe('LLMProvider', () => {
         const provider = new LLMProvider({});
         await assert.rejects(() => provider.review('diff'), /must be implemented/);
     });
+
+    it('buildUserMessage includes context when provided', () => {
+        const provider = new LLMProvider({});
+        const msg = provider.buildUserMessage('diff', 'msg', 'my context');
+        assert.match(msg, /Project Context:\n\nmy context/);
+    });
+
+    it('buildUserMessage omits context when empty string', () => {
+        const provider = new LLMProvider({});
+        const msg = provider.buildUserMessage('diff', 'msg', '');
+        assert.ok(!msg.includes('Project Context:'));
+    });
+
+    it('buildUserMessage omits context when undefined', () => {
+        const provider = new LLMProvider({});
+        const msg = provider.buildUserMessage('diff', 'msg');
+        assert.ok(!msg.includes('Project Context:'));
+    });
+
+    it('context appears before diff', () => {
+        const provider = new LLMProvider({});
+        const msg = provider.buildUserMessage('diff', 'msg', 'ctx');
+        const ctxIndex = msg.indexOf('Project Context:');
+        const diffIndex = msg.indexOf('Pull Request Diff:');
+        assert.ok(ctxIndex < diffIndex, 'context should appear before diff');
+    });
 });

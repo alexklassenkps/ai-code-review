@@ -7,8 +7,12 @@ class LLMProvider {
         throw new Error('validateConfig() must be implemented');
     }
 
-    buildUserMessage(diff, userMessage) {
-        return `${userMessage ? `User request: ${userMessage}\n\n` : ''}Pull Request Diff:\n\`\`\`\n${diff}\n\`\`\``;
+    buildUserMessage(diff, userMessage, context) {
+        let msg = '';
+        if (context) msg += `Project Context:\n\n${context}\n\n`;
+        if (userMessage) msg += `User request: ${userMessage}\n\n`;
+        msg += `Pull Request Diff:\n\`\`\`\n${diff}\n\`\`\``;
+        return msg;
     }
 
     async review(diff, userMessage) {

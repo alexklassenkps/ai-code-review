@@ -8,7 +8,7 @@ class ClaudeProvider extends LLMProvider {
         }
     }
 
-    async review(diff, userMessage) {
+    async review(diff, userMessage, context) {
         this.validateConfig();
 
         const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -24,7 +24,7 @@ class ClaudeProvider extends LLMProvider {
                 system: REVIEW_PROMPT,
                 messages: [{
                     role: 'user',
-                    content: this.buildUserMessage(diff, userMessage),
+                    content: this.buildUserMessage(diff, userMessage, context),
                 }],
             }),
         });

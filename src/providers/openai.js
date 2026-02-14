@@ -8,7 +8,7 @@ class OpenAIProvider extends LLMProvider {
         }
     }
 
-    async review(diff, userMessage) {
+    async review(diff, userMessage, context) {
         this.validateConfig();
 
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -23,7 +23,7 @@ class OpenAIProvider extends LLMProvider {
                     { role: 'system', content: REVIEW_PROMPT },
                     {
                         role: 'user',
-                        content: this.buildUserMessage(diff, userMessage),
+                        content: this.buildUserMessage(diff, userMessage, context),
                     },
                 ],
                 max_tokens: 4096,
