@@ -27772,10 +27772,7 @@ async function run() {
 
         // Fetch PR diff
         core.info(`Fetching diff for ${owner}/${repo}#${prNumber}...`);
-        const files = await forgejo.getPRFiles(owner, repo, prNumber);
-        const diff = files.map(f => {
-            return `--- a/${f.filename}\n+++ b/${f.filename}\n${f.patch || ''}`;
-        }).join('\n\n');
+        const diff = await forgejo.getPRDiff(owner, repo, prNumber);
 
         if (!diff.trim()) {
             await forgejo.createComment(owner, repo, prNumber,
