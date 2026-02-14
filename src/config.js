@@ -19,6 +19,7 @@ function getInputOrEnv(inputName, envNames, fallback = '') {
     for (const envName of envNames) {
         const envValue = getEnvValueCaseInsensitive(envName);
         if (envValue) {
+            console.info(`value found for ${envName}`)
             return envValue;
         } else {
             console.info(`no value found for ${envName}`)
