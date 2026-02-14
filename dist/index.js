@@ -25848,13 +25848,13 @@ function loadContextFilesWithStatus(filePaths, workDir) {
     for (const filePath of filePaths) {
         const fullPath = path.resolve(workDir, filePath);
         try {
-            console.info(`trying to load file at "${filePath}"`)
+            console.info(`trying to load file at "${fullPath}"`)
             const content = fs.readFileSync(fullPath, 'utf8');
             sections.push(`## ${filePath}\n\n${content}`);
             includedFiles.push(filePath);
         } catch (e) {
             missingFiles.push(filePath);
-            console.info(`could not load "${filePath}"`)
+            console.info(`could not load "${fullPath}"`)
         }
     }
 
