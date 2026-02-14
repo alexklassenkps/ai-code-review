@@ -27615,7 +27615,7 @@ class ForgejoClient {
         return this.request('POST', `/repos/${owner}/${repo}/pulls/${pr}/reviews`, {
             event: 'COMMENT',
             body: '',
-            comments: [{ path, new_line_num: line, body }],
+            comments: [{ path, new_position: line, body }],
         });
     }
 
@@ -27648,6 +27648,11 @@ Respond in the following JSON format:
     }
   ]
 }
+
+IMPORTANT: For "line", use the actual line number in the NEW version of the file.
+The diff uses unified format with @@ -old_start,old_count +new_start,new_count @@ headers.
+Count from new_start to determine the correct line number for added (+) and context lines.
+Do NOT use the diff hunk position — use the real line number as it appears in the new file.
 
 Only return valid JSON. No markdown fences.`;
 
