@@ -1,0 +1,33 @@
+name: 'AI Code Review'
+description: 'AI-powered code review using Claude or Codex, triggered by @Claude or @Codex comments'
+author: 'Your Name'
+
+inputs:
+  anthropic_api_key:
+    description: 'Anthropic API key for Claude'
+    required: false
+  openai_api_key:
+    description: 'OpenAI API key for Codex/GPT'
+    required: false
+  default_provider:
+    description: 'Default AI provider (claude or codex)'
+    required: false
+    default: 'claude'
+  claude_model:
+    description: 'Claude model to use'
+    required: false
+    default: 'claude-sonnet-4-20250514'
+  codex_model:
+    description: 'OpenAI model to use'
+    required: false
+    default: 'gpt-4o'
+  forgejo_token:
+    description: 'Forgejo API token with repo permissions'
+    required: true
+  forgejo_url:
+    description: 'Forgejo instance URL (e.g. https://codeberg.org)'
+    required: true
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
