@@ -27615,7 +27615,7 @@ class ForgejoClient {
         return this.request('POST', `/repos/${owner}/${repo}/pulls/${pr}/reviews`, {
             event: 'COMMENT',
             body: '',
-            comments: [{ path, new_position: line, body }],
+            comments: [{ path, new_position: line + 1, body }],
         });
     }
 
