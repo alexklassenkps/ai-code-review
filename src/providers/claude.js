@@ -1,5 +1,6 @@
 const { LLMProvider } = require('./base');
 const { REVIEW_PROMPT } = require('../prompts/review');
+const { FOLLOWUP_PROMPT } = require('../prompts/followup');
 
 class ClaudeProvider extends LLMProvider {
     validateConfig() {
@@ -25,6 +26,36 @@ class ClaudeProvider extends LLMProvider {
                 messages: [{
                     role: 'user',
                     content: this.buildUserMessage(diff, userMessage, context),
+                }],
+            }),
+        });
+
+        if (!res.ok) {
+            const err = await res.text();
+            throw new Error(`Claude API error (${res.status}): ${err}`);
+        }
+
+        const data = await res.json();
+        return data.content[0].text;
+    }
+
+    async followUp(diff, threadHistory, userMessage, context) {
+        this.validateConfig();
+
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': this.config.anthropicKey,
+                'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify({
+                model: this.config.claudeModel,
+                max_tokens: 4096,
+                system: FOLLOWUP_PROMPT,
+                messages: [{
+                    role: 'user',
+                    content: this.buildFollowUpMessage(diff, threadHistory, userMessage, context),
                 }],
             }),
         });

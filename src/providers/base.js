@@ -18,6 +18,19 @@ class LLMProvider {
     async review(diff, userMessage) {
         throw new Error('review() must be implemented');
     }
+
+    buildFollowUpMessage(diff, threadHistory, userMessage, context) {
+        let msg = '';
+        if (context) msg += `Project Context:\n\n${context}\n\n`;
+        msg += `Pull Request Diff:\n\`\`\`\n${diff}\n\`\`\`\n\n`;
+        if (threadHistory) msg += `Review Thread:\n\n${threadHistory}\n\n`;
+        msg += `User's follow-up:\n${userMessage}`;
+        return msg;
+    }
+
+    async followUp(diff, threadHistory, userMessage, context) {
+        throw new Error('followUp() must be implemented');
+    }
 }
 
 module.exports = { LLMProvider };

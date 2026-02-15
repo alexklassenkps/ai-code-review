@@ -25679,6 +25679,10 @@ class GitPlatformClient {
     async addReaction(owner, repo, commentId, reaction) {
         throw new Error('addReaction() must be implemented');
     }
+
+    async getReviewComments(owner, repo, pr) {
+        throw new Error('getReviewComments() must be implemented');
+    }
 }
 
 module.exports = { GitPlatformClient };
@@ -25767,6 +25771,20 @@ class ForgejoClient extends GitPlatformClient {
         return this.request('POST', `/repos/${owner}/${repo}/issues/comments/${commentId}/reactions`, {
             content: reaction,
         });
+    }
+
+    async getReviewComments(owner, repo, pr) {
+        const reviews = await this.request('GET', `/repos/${owner}/${repo}/pulls/${pr}/reviews`);
+        const allComments = [];
+        for (const review of reviews) {
+            if (review.comments_count > 0) {
+                const comments = await this.request(
+                    'GET', `/repos/${owner}/${repo}/pulls/${pr}/reviews/${review.id}/comments`
+                );
+                allComments.push(...comments);
+            }
+        }
+        return allComments;
     }
 }
 
@@ -25873,6 +25891,42 @@ module.exports = { loadContextFiles, loadContextFilesWithStatus };
 
 /***/ }),
 
+/***/ 7816:
+/***/ ((module) => {
+
+const AI_INLINE_PATTERN = /^(?:🔴|🟡|🔵|🟢) \*\*(CRITICAL|WARNING|SUGGESTION|PRAISE)\*\*:/;
+
+const MAX_THREAD_ENTRIES = 10;
+
+function isAIReviewComment(body) {
+    return AI_INLINE_PATTERN.test(body);
+}
+
+function buildThreadFromComments(allReviewComments, targetPath, targetLine, currentCommentId) {
+    const thread = allReviewComments
+        .filter(c => c.path === targetPath && c.position === targetLine && c.id !== currentCommentId)
+        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+        .slice(-MAX_THREAD_ENTRIES);
+
+    return thread.map(c => {
+        const label = isAIReviewComment(c.body)
+            ? 'AI Reviewer'
+            : `@${c.user.login}`;
+        return `**${label}:**\n${c.body}`;
+    }).join('\n\n---\n\n');
+}
+
+function threadHasAIComment(allReviewComments, targetPath, targetLine) {
+    return allReviewComments.some(c =>
+        c.path === targetPath && c.position === targetLine && isAIReviewComment(c.body)
+    );
+}
+
+module.exports = { isAIReviewComment, buildThreadFromComments, threadHasAIComment, MAX_THREAD_ENTRIES };
+
+
+/***/ }),
+
 /***/ 1925:
 /***/ ((module) => {
 
@@ -25942,7 +25996,11 @@ function buildSummaryComment({ providerName, review, triggerUser, inlineSuccess,
     return body;
 }
 
-module.exports = { severityIcon, formatInlineComment, formatFallbackComment, buildSummaryComment };
+function buildFollowUpReply({ providerName, responseText }) {
+    return `${responseText}\n\n_— ${providerName}_`;
+}
+
+module.exports = { severityIcon, formatInlineComment, formatFallbackComment, buildSummaryComment, buildFollowUpReply };
 
 
 /***/ }),
@@ -25958,8 +26016,9 @@ const { getPlatformClient } = __nccwpck_require__(6313);
 const { getProvider } = __nccwpck_require__(8491);
 const { detectTrigger } = __nccwpck_require__(8199);
 const { parseReviewResponse } = __nccwpck_require__(6936);
-const { formatInlineComment, buildSummaryComment } = __nccwpck_require__(1925);
+const { formatInlineComment, buildSummaryComment, buildFollowUpReply } = __nccwpck_require__(1925);
 const { loadContextFilesWithStatus } = __nccwpck_require__(9020);
+const { threadHasAIComment, buildThreadFromComments } = __nccwpck_require__(7816);
 
 // ─── Diff Annotation ────────────────────────────────────────────
 function annotateDiff(rawDiff) {
@@ -26018,6 +26077,58 @@ async function run() {
             await client.addReaction(owner, repo, comment.id, 'eyes');
         } catch (e) {
             core.warning(`Could not add reaction: ${e.message}`);
+        }
+
+        // Check if this is a reply in a review comment thread
+        if (comment.pull_request_review_id) {
+            core.info('Detected review comment thread reply');
+
+            const allReviewComments = await client.getReviewComments(owner, repo, prNumber);
+
+            if (!threadHasAIComment(allReviewComments, comment.path, comment.position)) {
+                core.info('Thread does not contain an AI review comment, skipping.');
+                return;
+            }
+
+            const threadHistory = buildThreadFromComments(
+                allReviewComments, comment.path, comment.position, comment.id
+            );
+
+            const diff = await client.getPRDiff(owner, repo, prNumber);
+            const annotatedDiff = annotateDiff(diff);
+            const maxDiffLength = 30000;
+            const truncatedDiff = annotatedDiff.length > maxDiffLength
+                ? annotatedDiff.substring(0, maxDiffLength) + '\n\n... (diff truncated due to size)'
+                : annotatedDiff;
+
+            let context = '';
+            if (config.contextFiles.length > 0) {
+                const workDir = process.env.GITHUB_WORKSPACE || process.cwd();
+                const contextFileStatus = loadContextFilesWithStatus(config.contextFiles, workDir);
+                context = contextFileStatus.content;
+            }
+
+            core.info(`Calling ${trigger.provider} for follow-up...`);
+            const provider = getProvider(trigger.provider, config);
+            const responseText = await provider.followUp(truncatedDiff, threadHistory, trigger.message, context);
+
+            const providerLabel = trigger.provider === 'claude' ? '🧠 Claude' : '🤖 Codex';
+            const replyBody = buildFollowUpReply({ providerName: providerLabel, responseText });
+
+            await client.createReviewComment(owner, repo, prNumber, {
+                body: replyBody,
+                path: comment.path,
+                line: comment.position,
+            });
+
+            try {
+                await client.addReaction(owner, repo, comment.id, 'rocket');
+            } catch (e) {
+                core.warning(`Could not add reaction: ${e.message}`);
+            }
+
+            core.info('Follow-up reply posted!');
+            return;
         }
 
         // Fetch PR diff
@@ -26135,6 +26246,27 @@ module.exports = { parseReviewResponse };
 
 /***/ }),
 
+/***/ 1083:
+/***/ ((module) => {
+
+const FOLLOWUP_PROMPT = `You are an expert code reviewer responding to a follow-up question in a review comment thread on a specific file and line.
+
+Context: You previously left an inline review comment on a pull request. The developer is now replying to your comment with a question or request.
+
+Your response should:
+- Address the user's specific question or request directly
+- Reference the specific code being discussed (the diff and file context are provided)
+- Be helpful, concise, and conversational
+- Use markdown formatting for readability
+- If asked to clarify, provide more detail, examples, or alternative approaches
+
+Respond in plain markdown text. Do NOT use JSON format.`;
+
+module.exports = { FOLLOWUP_PROMPT };
+
+
+/***/ }),
+
 /***/ 1631:
 /***/ ((module) => {
 
@@ -26192,6 +26324,19 @@ class LLMProvider {
     async review(diff, userMessage) {
         throw new Error('review() must be implemented');
     }
+
+    buildFollowUpMessage(diff, threadHistory, userMessage, context) {
+        let msg = '';
+        if (context) msg += `Project Context:\n\n${context}\n\n`;
+        msg += `Pull Request Diff:\n\`\`\`\n${diff}\n\`\`\`\n\n`;
+        if (threadHistory) msg += `Review Thread:\n\n${threadHistory}\n\n`;
+        msg += `User's follow-up:\n${userMessage}`;
+        return msg;
+    }
+
+    async followUp(diff, threadHistory, userMessage, context) {
+        throw new Error('followUp() must be implemented');
+    }
 }
 
 module.exports = { LLMProvider };
@@ -26203,6 +26348,7 @@ module.exports = { LLMProvider };
 
 const { LLMProvider } = __nccwpck_require__(3065);
 const { REVIEW_PROMPT } = __nccwpck_require__(1631);
+const { FOLLOWUP_PROMPT } = __nccwpck_require__(1083);
 
 class ClaudeProvider extends LLMProvider {
     validateConfig() {
@@ -26240,6 +26386,36 @@ class ClaudeProvider extends LLMProvider {
         const data = await res.json();
         return data.content[0].text;
     }
+
+    async followUp(diff, threadHistory, userMessage, context) {
+        this.validateConfig();
+
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': this.config.anthropicKey,
+                'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify({
+                model: this.config.claudeModel,
+                max_tokens: 4096,
+                system: FOLLOWUP_PROMPT,
+                messages: [{
+                    role: 'user',
+                    content: this.buildFollowUpMessage(diff, threadHistory, userMessage, context),
+                }],
+            }),
+        });
+
+        if (!res.ok) {
+            const err = await res.text();
+            throw new Error(`Claude API error (${res.status}): ${err}`);
+        }
+
+        const data = await res.json();
+        return data.content[0].text;
+    }
 }
 
 module.exports = { ClaudeProvider };
@@ -26251,6 +26427,7 @@ module.exports = { ClaudeProvider };
 
 const { LLMProvider } = __nccwpck_require__(3065);
 const { REVIEW_PROMPT } = __nccwpck_require__(1631);
+const { FOLLOWUP_PROMPT } = __nccwpck_require__(1083);
 
 class OpenAIProvider extends LLMProvider {
     validateConfig() {
@@ -26275,6 +26452,38 @@ class OpenAIProvider extends LLMProvider {
                     {
                         role: 'user',
                         content: this.buildUserMessage(diff, userMessage, context),
+                    },
+                ],
+                max_tokens: 4096,
+                temperature: 0.2,
+            }),
+        });
+
+        if (!res.ok) {
+            const err = await res.text();
+            throw new Error(`OpenAI API error (${res.status}): ${err}`);
+        }
+
+        const data = await res.json();
+        return data.choices[0].message.content;
+    }
+
+    async followUp(diff, threadHistory, userMessage, context) {
+        this.validateConfig();
+
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.config.openaiKey}`,
+            },
+            body: JSON.stringify({
+                model: this.config.codexModel,
+                messages: [
+                    { role: 'system', content: FOLLOWUP_PROMPT },
+                    {
+                        role: 'user',
+                        content: this.buildFollowUpMessage(diff, threadHistory, userMessage, context),
                     },
                 ],
                 max_tokens: 4096,
