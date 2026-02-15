@@ -54,6 +54,7 @@ async function run() {
 
         const { owner, repo, prNumber, comment } = ctx;
 
+        console.info(JSON.stringify(event, null, 2))
         console.info(comment)
 
         const trigger = detectTrigger(comment.body);
