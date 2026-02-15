@@ -31,10 +31,6 @@ class GitPlatformClient {
     async addReaction(owner, repo, commentId, reaction) {
         throw new Error('addReaction() must be implemented');
     }
-
-    async getReviewComments(owner, repo, pr) {
-        throw new Error('getReviewComments() must be implemented');
-    }
 }
 
 module.exports = { GitPlatformClient };

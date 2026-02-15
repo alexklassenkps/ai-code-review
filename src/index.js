@@ -6,9 +6,8 @@ const { getPlatformClient } = require('./clients/registry');
 const { getProvider } = require('./providers/registry');
 const { detectTrigger } = require('./trigger');
 const { parseReviewResponse } = require('./parser');
-const { formatInlineComment, buildSummaryComment, buildFollowUpReply } = require('./formatter');
+const { formatInlineComment, buildSummaryComment } = require('./formatter');
 const { loadContextFilesWithStatus } = require('./context');
-const { threadHasAIComment, buildThreadFromComments } = require('./conversation');
 
 // ─── Diff Annotation ────────────────────────────────────────────
 function annotateDiff(rawDiff) {
@@ -70,58 +69,6 @@ async function run() {
             await client.addReaction(owner, repo, comment.id, 'eyes');
         } catch (e) {
             core.warning(`Could not add reaction: ${e.message}`);
-        }
-
-        // Check if this is a reply in a review comment thread
-        if (comment.pull_request_review_id) {
-            core.info('Detected review comment thread reply');
-
-            const allReviewComments = await client.getReviewComments(owner, repo, prNumber);
-
-            if (!threadHasAIComment(allReviewComments, comment.path, comment.position)) {
-                core.info('Thread does not contain an AI review comment, skipping.');
-                return;
-            }
-
-            const threadHistory = buildThreadFromComments(
-                allReviewComments, comment.path, comment.position, comment.id
-            );
-
-            const diff = await client.getPRDiff(owner, repo, prNumber);
-            const annotatedDiff = annotateDiff(diff);
-            const maxDiffLength = 30000;
-            const truncatedDiff = annotatedDiff.length > maxDiffLength
-                ? annotatedDiff.substring(0, maxDiffLength) + '\n\n... (diff truncated due to size)'
-                : annotatedDiff;
-
-            let context = '';
-            if (config.contextFiles.length > 0) {
-                const workDir = process.env.GITHUB_WORKSPACE || process.cwd();
-                const contextFileStatus = loadContextFilesWithStatus(config.contextFiles, workDir);
-                context = contextFileStatus.content;
-            }
-
-            core.info(`Calling ${trigger.provider} for follow-up...`);
-            const provider = getProvider(trigger.provider, config);
-            const responseText = await provider.followUp(truncatedDiff, threadHistory, trigger.message, context);
-
-            const providerLabel = trigger.provider === 'claude' ? '🧠 Claude' : '🤖 Codex';
-            const replyBody = buildFollowUpReply({ providerName: providerLabel, responseText });
-
-            await client.createReviewComment(owner, repo, prNumber, {
-                body: replyBody,
-                path: comment.path,
-                line: comment.position,
-            });
-
-            try {
-                await client.addReaction(owner, repo, comment.id, 'rocket');
-            } catch (e) {
-                core.warning(`Could not add reaction: ${e.message}`);
-            }
-
-            core.info('Follow-up reply posted!');
-            return;
         }
 
         // Fetch PR diff

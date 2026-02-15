@@ -1,6 +1,5 @@
 const { LLMProvider } = require('./base');
 const { REVIEW_PROMPT } = require('../prompts/review');
-const { FOLLOWUP_PROMPT } = require('../prompts/followup');
 
 class OpenAIProvider extends LLMProvider {
     validateConfig() {
@@ -25,38 +24,6 @@ class OpenAIProvider extends LLMProvider {
                     {
                         role: 'user',
                         content: this.buildUserMessage(diff, userMessage, context),
-                    },
-                ],
-                max_tokens: 4096,
-                temperature: 0.2,
-            }),
-        });
-
-        if (!res.ok) {
-            const err = await res.text();
-            throw new Error(`OpenAI API error (${res.status}): ${err}`);
-        }
-
-        const data = await res.json();
-        return data.choices[0].message.content;
-    }
-
-    async followUp(diff, threadHistory, userMessage, context) {
-        this.validateConfig();
-
-        const res = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this.config.openaiKey}`,
-            },
-            body: JSON.stringify({
-                model: this.config.codexModel,
-                messages: [
-                    { role: 'system', content: FOLLOWUP_PROMPT },
-                    {
-                        role: 'user',
-                        content: this.buildFollowUpMessage(diff, threadHistory, userMessage, context),
                     },
                 ],
                 max_tokens: 4096,
