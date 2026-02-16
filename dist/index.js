@@ -25928,9 +25928,11 @@ function buildThreadFromComments(allReviewComments, targetPath, targetLine, curr
     }).join('\n\n---\n\n');
 }
 
-function findThreadAIComment(allReviewComments, targetPath, targetLine) {
+function findThreadAIComment(allReviewComments, targetPath, targetLine, reviewId) {
     return allReviewComments.find(c =>
-        c.path === targetPath && c.position === targetLine && isAIReviewComment(c.body)
+        c.path === targetPath && c.position === targetLine
+        && c.pull_request_review_id === reviewId
+        && isAIReviewComment(c.body)
     ) || null;
 }
 
@@ -26106,7 +26108,7 @@ async function run() {
 
             // Find the original AI comment in the thread — we reply under
             // its review so the response stays in the correct thread.
-            const aiComment = findThreadAIComment(allReviewComments, reviewComment.path, reviewComment.position);
+            const aiComment = findThreadAIComment(allReviewComments, reviewComment.path, reviewComment.position, reviewComment.pull_request_review_id);
             if (!aiComment) {
                 core.info('Thread does not contain an AI review comment, skipping.');
                 return;

@@ -84,7 +84,7 @@ async function run() {
 
             // Find the original AI comment in the thread — we reply under
             // its review so the response stays in the correct thread.
-            const aiComment = findThreadAIComment(allReviewComments, reviewComment.path, reviewComment.position);
+            const aiComment = findThreadAIComment(allReviewComments, reviewComment.path, reviewComment.position, reviewComment.pull_request_review_id);
             if (!aiComment) {
                 core.info('Thread does not contain an AI review comment, skipping.');
                 return;

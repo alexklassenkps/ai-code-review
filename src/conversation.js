@@ -20,9 +20,11 @@ function buildThreadFromComments(allReviewComments, targetPath, targetLine, curr
     }).join('\n\n---\n\n');
 }
 
-function findThreadAIComment(allReviewComments, targetPath, targetLine) {
+function findThreadAIComment(allReviewComments, targetPath, targetLine, reviewId) {
     return allReviewComments.find(c =>
-        c.path === targetPath && c.position === targetLine && isAIReviewComment(c.body)
+        c.path === targetPath && c.position === targetLine
+        && c.pull_request_review_id === reviewId
+        && isAIReviewComment(c.body)
     ) || null;
 }
 

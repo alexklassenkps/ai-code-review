@@ -38,38 +38,56 @@ describe('findThreadAIComment', () => {
         user: { login: 'bot' }, created_at: '2025-01-01T00:00:00Z',
     });
 
-    it('returns the AI comment at same path/line', () => {
+    it('returns the AI comment matching path/line/reviewId', () => {
         const comments = [
             makeComment('src/foo.js', 10, '🔴 **CRITICAL**: Bug here', 1),
         ];
-        const result = findThreadAIComment(comments, 'src/foo.js', 10);
+        const result = findThreadAIComment(comments, 'src/foo.js', 10, 1);
         assert.ok(result);
         assert.equal(result.pull_request_review_id, 1);
+    });
+
+    it('returns the correct AI comment when multiple reviews have same path/line', () => {
+        const comments = [
+            makeComment('src/foo.js', 10, '🔴 **CRITICAL**: First review', 1),
+            makeComment('src/foo.js', 10, '🟡 **WARNING**: Second review', 2),
+        ];
+        const result = findThreadAIComment(comments, 'src/foo.js', 10, 2);
+        assert.ok(result);
+        assert.equal(result.pull_request_review_id, 2);
+        assert.match(result.body, /Second review/);
     });
 
     it('returns null when no AI comment at path/line', () => {
         const comments = [
             makeComment('src/foo.js', 10, 'Just a regular comment', 1),
         ];
-        assert.equal(findThreadAIComment(comments, 'src/foo.js', 10), null);
+        assert.equal(findThreadAIComment(comments, 'src/foo.js', 10, 1), null);
     });
 
     it('returns null for AI comment at different path', () => {
         const comments = [
             makeComment('src/bar.js', 10, '🔴 **CRITICAL**: Bug here', 1),
         ];
-        assert.equal(findThreadAIComment(comments, 'src/foo.js', 10), null);
+        assert.equal(findThreadAIComment(comments, 'src/foo.js', 10, 1), null);
     });
 
     it('returns null for AI comment at different line', () => {
         const comments = [
             makeComment('src/foo.js', 20, '🔴 **CRITICAL**: Bug here', 1),
         ];
-        assert.equal(findThreadAIComment(comments, 'src/foo.js', 10), null);
+        assert.equal(findThreadAIComment(comments, 'src/foo.js', 10, 1), null);
+    });
+
+    it('returns null for AI comment in different review', () => {
+        const comments = [
+            makeComment('src/foo.js', 10, '🔴 **CRITICAL**: Bug here', 1),
+        ];
+        assert.equal(findThreadAIComment(comments, 'src/foo.js', 10, 2), null);
     });
 
     it('returns null for empty comments array', () => {
-        assert.equal(findThreadAIComment([], 'src/foo.js', 10), null);
+        assert.equal(findThreadAIComment([], 'src/foo.js', 10, 1), null);
     });
 });
 
