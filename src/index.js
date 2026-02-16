@@ -62,6 +62,9 @@ async function run() {
 
         core.info(`Triggered by @${trigger.provider} in comment #${comment.id}`);
 
+        console.info(JSON.stringify(event, null, 2))
+        console.info(comment)
+
         // React to the triggering comment with eyes emoji
         try {
             await client.addReaction(owner, repo, comment.id, 'eyes');
