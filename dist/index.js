@@ -25680,6 +25680,10 @@ class GitPlatformClient {
         throw new Error('addReaction() must be implemented');
     }
 
+    async replyToReviewComment(owner, repo, pr, reviewId, { body, path, line }) {
+        throw new Error('replyToReviewComment() must be implemented');
+    }
+
     async getReviewComments(owner, repo, pr) {
         throw new Error('getReviewComments() must be implemented');
     }
@@ -25764,6 +25768,14 @@ class ForgejoClient extends GitPlatformClient {
             event: 'COMMENT',
             body: body || '',
             comments: comments.map(c => ({ path: c.path, new_position: c.line, body: c.body })),
+        });
+    }
+
+    async replyToReviewComment(owner, repo, pr, reviewId, { body, path, line }) {
+        return this.request('POST', `/repos/${owner}/${repo}/pulls/${pr}/reviews/${reviewId}/comments`, {
+            body,
+            path,
+            new_position: line,
         });
     }
 
@@ -26122,9 +26134,10 @@ async function run() {
             const providerLabel = trigger.provider === 'claude' ? '🧠 Claude' : '🤖 Codex';
             const replyBody = buildFollowUpReply({ providerName: providerLabel, responseText });
 
-            await client.createReview(owner, repo, prNumber, {
-                body: '',
-                comments: [{ path: reviewComment.path, line: reviewComment.position, body: replyBody }],
+            await client.replyToReviewComment(owner, repo, prNumber, reviewComment.pull_request_review_id, {
+                body: replyBody,
+                path: reviewComment.path,
+                line: reviewComment.position,
             });
 
             try {

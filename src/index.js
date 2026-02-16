@@ -112,9 +112,10 @@ async function run() {
             const providerLabel = trigger.provider === 'claude' ? '🧠 Claude' : '🤖 Codex';
             const replyBody = buildFollowUpReply({ providerName: providerLabel, responseText });
 
-            await client.createReview(owner, repo, prNumber, {
-                body: '',
-                comments: [{ path: reviewComment.path, line: reviewComment.position, body: replyBody }],
+            await client.replyToReviewComment(owner, repo, prNumber, reviewComment.pull_request_review_id, {
+                body: replyBody,
+                path: reviewComment.path,
+                line: reviewComment.position,
             });
 
             try {

@@ -72,6 +72,14 @@ class ForgejoClient extends GitPlatformClient {
         });
     }
 
+    async replyToReviewComment(owner, repo, pr, reviewId, { body, path, line }) {
+        return this.request('POST', `/repos/${owner}/${repo}/pulls/${pr}/reviews/${reviewId}/comments`, {
+            body,
+            path,
+            new_position: line,
+        });
+    }
+
     async addReaction(owner, repo, commentId, reaction) {
         return this.request('POST', `/repos/${owner}/${repo}/issues/comments/${commentId}/reactions`, {
             content: reaction,

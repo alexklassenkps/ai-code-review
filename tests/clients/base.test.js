@@ -42,6 +42,14 @@ describe('GitPlatformClient', () => {
         );
     });
 
+    it('replyToReviewComment throws not implemented', async () => {
+        const client = new GitPlatformClient('u', 't');
+        await assert.rejects(
+            () => client.replyToReviewComment('o', 'r', 1, 42, { body: 'b', path: 'p', line: 1 }),
+            /must be implemented/,
+        );
+    });
+
     it('addReaction throws not implemented', async () => {
         const client = new GitPlatformClient('u', 't');
         await assert.rejects(() => client.addReaction('o', 'r', 1, 'eyes'), /must be implemented/);
