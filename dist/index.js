@@ -25928,13 +25928,13 @@ function buildThreadFromComments(allReviewComments, targetPath, targetLine, curr
     }).join('\n\n---\n\n');
 }
 
-function threadHasAIComment(allReviewComments, targetPath, targetLine) {
-    return allReviewComments.some(c =>
+function findThreadAIComment(allReviewComments, targetPath, targetLine) {
+    return allReviewComments.find(c =>
         c.path === targetPath && c.position === targetLine && isAIReviewComment(c.body)
-    );
+    ) || null;
 }
 
-module.exports = { isAIReviewComment, buildThreadFromComments, threadHasAIComment, MAX_THREAD_ENTRIES };
+module.exports = { isAIReviewComment, buildThreadFromComments, findThreadAIComment, MAX_THREAD_ENTRIES };
 
 
 /***/ }),
@@ -26030,7 +26030,7 @@ const { detectTrigger } = __nccwpck_require__(8199);
 const { parseReviewResponse } = __nccwpck_require__(6936);
 const { formatInlineComment, buildSummaryComment, buildFollowUpReply } = __nccwpck_require__(1925);
 const { loadContextFilesWithStatus } = __nccwpck_require__(9020);
-const { threadHasAIComment, buildThreadFromComments } = __nccwpck_require__(7816);
+const { findThreadAIComment, buildThreadFromComments } = __nccwpck_require__(7816);
 
 // ─── Diff Annotation ────────────────────────────────────────────
 function annotateDiff(rawDiff) {
@@ -26084,8 +26084,8 @@ async function run() {
 
         core.info(`Triggered by @${trigger.provider} in comment #${comment.id}`);
 
-        console.info(JSON.stringify(event, null, 2))
-        console.info(comment)
+        // console.info(JSON.stringify(event, null, 2))
+        // console.info(comment)
 
         // React to the triggering comment with eyes emoji
         try {
@@ -26104,7 +26104,10 @@ async function run() {
         if (reviewComment) {
             core.info('Detected review comment thread reply');
 
-            if (!threadHasAIComment(allReviewComments, reviewComment.path, reviewComment.position)) {
+            // Find the original AI comment in the thread — we reply under
+            // its review so the response stays in the correct thread.
+            const aiComment = findThreadAIComment(allReviewComments, reviewComment.path, reviewComment.position);
+            if (!aiComment) {
                 core.info('Thread does not contain an AI review comment, skipping.');
                 return;
             }
@@ -26134,10 +26137,10 @@ async function run() {
             const providerLabel = trigger.provider === 'claude' ? '🧠 Claude' : '🤖 Codex';
             const replyBody = buildFollowUpReply({ providerName: providerLabel, responseText });
 
-            await client.replyToReviewComment(owner, repo, prNumber, reviewComment.pull_request_review_id, {
+            await client.replyToReviewComment(owner, repo, prNumber, aiComment.pull_request_review_id, {
                 body: replyBody,
-                path: reviewComment.path,
-                line: reviewComment.position,
+                path: aiComment.path,
+                line: aiComment.position,
             });
 
             try {

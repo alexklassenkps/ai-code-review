@@ -20,10 +20,10 @@ function buildThreadFromComments(allReviewComments, targetPath, targetLine, curr
     }).join('\n\n---\n\n');
 }
 
-function threadHasAIComment(allReviewComments, targetPath, targetLine) {
-    return allReviewComments.some(c =>
+function findThreadAIComment(allReviewComments, targetPath, targetLine) {
+    return allReviewComments.find(c =>
         c.path === targetPath && c.position === targetLine && isAIReviewComment(c.body)
-    );
+    ) || null;
 }
 
-module.exports = { isAIReviewComment, buildThreadFromComments, threadHasAIComment, MAX_THREAD_ENTRIES };
+module.exports = { isAIReviewComment, buildThreadFromComments, findThreadAIComment, MAX_THREAD_ENTRIES };

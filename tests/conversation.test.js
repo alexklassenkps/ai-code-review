@@ -1,6 +1,6 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { isAIReviewComment, buildThreadFromComments, threadHasAIComment, MAX_THREAD_ENTRIES } = require('../src/conversation');
+const { isAIReviewComment, buildThreadFromComments, findThreadAIComment, MAX_THREAD_ENTRIES } = require('../src/conversation');
 
 describe('isAIReviewComment', () => {
     it('returns true for critical', () => {
@@ -32,41 +32,44 @@ describe('isAIReviewComment', () => {
     });
 });
 
-describe('threadHasAIComment', () => {
-    const makeComment = (path, position, body) => ({
-        id: Math.random(), path, position, body, user: { login: 'bot' }, created_at: '2025-01-01T00:00:00Z',
+describe('findThreadAIComment', () => {
+    const makeComment = (path, position, body, reviewId) => ({
+        id: Math.random(), path, position, body, pull_request_review_id: reviewId,
+        user: { login: 'bot' }, created_at: '2025-01-01T00:00:00Z',
     });
 
-    it('returns true when AI comment exists at same path/line', () => {
+    it('returns the AI comment at same path/line', () => {
         const comments = [
-            makeComment('src/foo.js', 10, '🔴 **CRITICAL**: Bug here'),
+            makeComment('src/foo.js', 10, '🔴 **CRITICAL**: Bug here', 1),
         ];
-        assert.ok(threadHasAIComment(comments, 'src/foo.js', 10));
+        const result = findThreadAIComment(comments, 'src/foo.js', 10);
+        assert.ok(result);
+        assert.equal(result.pull_request_review_id, 1);
     });
 
-    it('returns false when no AI comment at path/line', () => {
+    it('returns null when no AI comment at path/line', () => {
         const comments = [
-            makeComment('src/foo.js', 10, 'Just a regular comment'),
+            makeComment('src/foo.js', 10, 'Just a regular comment', 1),
         ];
-        assert.ok(!threadHasAIComment(comments, 'src/foo.js', 10));
+        assert.equal(findThreadAIComment(comments, 'src/foo.js', 10), null);
     });
 
-    it('returns false for AI comment at different path', () => {
+    it('returns null for AI comment at different path', () => {
         const comments = [
-            makeComment('src/bar.js', 10, '🔴 **CRITICAL**: Bug here'),
+            makeComment('src/bar.js', 10, '🔴 **CRITICAL**: Bug here', 1),
         ];
-        assert.ok(!threadHasAIComment(comments, 'src/foo.js', 10));
+        assert.equal(findThreadAIComment(comments, 'src/foo.js', 10), null);
     });
 
-    it('returns false for AI comment at different line', () => {
+    it('returns null for AI comment at different line', () => {
         const comments = [
-            makeComment('src/foo.js', 20, '🔴 **CRITICAL**: Bug here'),
+            makeComment('src/foo.js', 20, '🔴 **CRITICAL**: Bug here', 1),
         ];
-        assert.ok(!threadHasAIComment(comments, 'src/foo.js', 10));
+        assert.equal(findThreadAIComment(comments, 'src/foo.js', 10), null);
     });
 
-    it('returns false for empty comments array', () => {
-        assert.ok(!threadHasAIComment([], 'src/foo.js', 10));
+    it('returns null for empty comments array', () => {
+        assert.equal(findThreadAIComment([], 'src/foo.js', 10), null);
     });
 });
 
