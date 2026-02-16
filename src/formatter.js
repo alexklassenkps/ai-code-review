@@ -64,4 +64,8 @@ function buildSummaryComment({ providerName, review, triggerUser, inlineSuccess,
     return body;
 }
 
-module.exports = { severityIcon, formatInlineComment, formatFallbackComment, buildSummaryComment };
+function buildFollowUpReply({ providerName, responseText }) {
+    return `${responseText}\n\n_— ${providerName}_`;
+}
+
+module.exports = { severityIcon, formatInlineComment, formatFallbackComment, buildSummaryComment, buildFollowUpReply };

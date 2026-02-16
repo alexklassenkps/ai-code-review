@@ -1,6 +1,6 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { severityIcon, formatInlineComment, formatFallbackComment, buildSummaryComment } = require('../src/formatter');
+const { severityIcon, formatInlineComment, formatFallbackComment, buildSummaryComment, buildFollowUpReply } = require('../src/formatter');
 
 describe('severityIcon', () => {
     it('returns red circle for critical', () => {
@@ -139,5 +139,24 @@ describe('buildSummaryComment', () => {
         });
 
         assert.match(result, /No Context Files included/);
+    });
+});
+
+describe('buildFollowUpReply', () => {
+    it('includes response text', () => {
+        const result = buildFollowUpReply({ providerName: '🧠 Claude', responseText: 'Here is my explanation.' });
+        assert.match(result, /Here is my explanation\./);
+    });
+
+    it('includes provider footer', () => {
+        const result = buildFollowUpReply({ providerName: '🧠 Claude', responseText: 'Response text' });
+        assert.match(result, /_— 🧠 Claude_/);
+    });
+
+    it('puts footer after response text', () => {
+        const result = buildFollowUpReply({ providerName: '🤖 Codex', responseText: 'My answer' });
+        const responseIdx = result.indexOf('My answer');
+        const footerIdx = result.indexOf('_— 🤖 Codex_');
+        assert.ok(responseIdx < footerIdx, 'response should appear before footer');
     });
 });

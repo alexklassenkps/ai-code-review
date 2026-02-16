@@ -69,4 +69,47 @@ describe('LLMProvider', () => {
         const diffIndex = msg.indexOf('Pull Request Diff:');
         assert.ok(ctxIndex < diffIndex, 'context should appear before diff');
     });
+
+    it('buildFollowUpMessage includes thread history', () => {
+        const provider = new LLMProvider({});
+        const msg = provider.buildFollowUpMessage('diff', 'some thread', 'user msg');
+        assert.match(msg, /Review Thread:\n\nsome thread/);
+    });
+
+    it('buildFollowUpMessage includes context when provided', () => {
+        const provider = new LLMProvider({});
+        const msg = provider.buildFollowUpMessage('diff', 'thread', 'msg', 'my context');
+        assert.match(msg, /Project Context:\n\nmy context/);
+    });
+
+    it('buildFollowUpMessage omits context when empty', () => {
+        const provider = new LLMProvider({});
+        const msg = provider.buildFollowUpMessage('diff', 'thread', 'msg', '');
+        assert.ok(!msg.includes('Project Context:'));
+    });
+
+    it('buildFollowUpMessage puts diff before thread history', () => {
+        const provider = new LLMProvider({});
+        const msg = provider.buildFollowUpMessage('diff', 'thread', 'msg');
+        const diffIdx = msg.indexOf('Pull Request Diff:');
+        const threadIdx = msg.indexOf('Review Thread:');
+        assert.ok(diffIdx < threadIdx, 'diff should appear before thread history');
+    });
+
+    it('buildFollowUpMessage omits thread section when empty', () => {
+        const provider = new LLMProvider({});
+        const msg = provider.buildFollowUpMessage('diff', '', 'msg');
+        assert.ok(!msg.includes('Review Thread:'));
+    });
+
+    it('buildFollowUpMessage includes user follow-up', () => {
+        const provider = new LLMProvider({});
+        const msg = provider.buildFollowUpMessage('diff', 'thread', 'Can you explain?');
+        assert.match(msg, /User's follow-up:\nCan you explain\?/);
+    });
+
+    it('followUp throws not implemented', async () => {
+        const provider = new LLMProvider({});
+        await assert.rejects(() => provider.followUp('diff', 'thread', 'msg'), /must be implemented/);
+    });
 });
