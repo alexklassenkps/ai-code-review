@@ -25680,7 +25680,7 @@ class GitPlatformClient {
         throw new Error('addReaction() must be implemented');
     }
 
-    async getReviewComments(owner, repo, pr, reviewId) {
+    async getReviewComments(owner, repo, pr) {
         throw new Error('getReviewComments() must be implemented');
     }
 }
@@ -25773,8 +25773,18 @@ class ForgejoClient extends GitPlatformClient {
         });
     }
 
-    async getReviewComments(owner, repo, pr, reviewId) {
-        return this.request('GET', `/repos/${owner}/${repo}/pulls/${pr}/reviews/${reviewId}/comments`);
+    async getReviewComments(owner, repo, pr) {
+        const reviews = await this.request('GET', `/repos/${owner}/${repo}/pulls/${pr}/reviews`);
+        const allComments = [];
+        for (const review of reviews) {
+            if (review.comments_count > 0) {
+                const comments = await this.request(
+                    'GET', `/repos/${owner}/${repo}/pulls/${pr}/reviews/${review.id}/comments`
+                );
+                allComments.push(...comments);
+            }
+        }
+        return allComments;
     }
 }
 
@@ -26073,20 +26083,22 @@ async function run() {
         }
 
         // Check if this is a reply in a review comment thread.
-        // pull_request_review_comment events carry pull_request_review_id,
-        // path, and position directly on the comment.
-        if (comment.pull_request_review_id) {
+        // Forgejo fires issue_comment for review comment replies too, so the
+        // event payload lacks review fields. We fetch all review comments and
+        // look up the triggering comment by ID to get path, position, etc.
+        const allReviewComments = await client.getReviewComments(owner, repo, prNumber);
+        const reviewComment = allReviewComments.find(c => c.id === comment.id);
+
+        if (reviewComment) {
             core.info('Detected review comment thread reply');
 
-            const allReviewComments = await client.getReviewComments(owner, repo, prNumber, comment.pull_request_review_id);
-
-            if (!threadHasAIComment(allReviewComments, comment.path, comment.position)) {
+            if (!threadHasAIComment(allReviewComments, reviewComment.path, reviewComment.position)) {
                 core.info('Thread does not contain an AI review comment, skipping.');
                 return;
             }
 
             const threadHistory = buildThreadFromComments(
-                allReviewComments, comment.path, comment.position, comment.id
+                allReviewComments, reviewComment.path, reviewComment.position, comment.id
             );
 
             const diff = await client.getPRDiff(owner, repo, prNumber);
@@ -26112,7 +26124,7 @@ async function run() {
 
             await client.createReview(owner, repo, prNumber, {
                 body: '',
-                comments: [{ path: comment.path, line: comment.position, body: replyBody }],
+                comments: [{ path: reviewComment.path, line: reviewComment.position, body: replyBody }],
             });
 
             try {

@@ -32,7 +32,7 @@ class GitPlatformClient {
         throw new Error('addReaction() must be implemented');
     }
 
-    async getReviewComments(owner, repo, pr, reviewId) {
+    async getReviewComments(owner, repo, pr) {
         throw new Error('getReviewComments() must be implemented');
     }
 }
