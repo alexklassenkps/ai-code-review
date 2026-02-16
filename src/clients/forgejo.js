@@ -79,17 +79,7 @@ class ForgejoClient extends GitPlatformClient {
     }
 
     async getReviewComments(owner, repo, pr) {
-        const reviews = await this.request('GET', `/repos/${owner}/${repo}/pulls/${pr}/reviews`);
-        const allComments = [];
-        for (const review of reviews) {
-            if (review.comments_count > 0) {
-                const comments = await this.request(
-                    'GET', `/repos/${owner}/${repo}/pulls/${pr}/reviews/${review.id}/comments`
-                );
-                allComments.push(...comments);
-            }
-        }
-        return allComments;
+        return this.request('GET', `/repos/${owner}/${repo}/pulls/${pr}/comments`);
     }
 }
 

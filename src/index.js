@@ -54,10 +54,6 @@ async function run() {
 
         const { owner, repo, prNumber, comment } = ctx;
 
-        console.info(JSON.stringify(process.env, null, 2))
-        console.info(JSON.stringify(event, null, 2))
-        console.info(comment)
-
         const trigger = detectTrigger(comment.body);
         if (!trigger) {
             core.info('No @Claude or @Codex mention found, skipping.');
@@ -73,19 +69,23 @@ async function run() {
             core.warning(`Could not add reaction: ${e.message}`);
         }
 
-        // Check if this is a reply in a review comment thread
-        if (comment.pull_request_review_id) {
+        // Check if this is a reply in a review comment thread.
+        // The issue_comment event doesn't carry review fields (path, position,
+        // pull_request_review_id), so we look up the comment in the pulls
+        // comments API which returns those fields.
+        const allReviewComments = await client.getReviewComments(owner, repo, prNumber);
+        const reviewComment = allReviewComments.find(c => c.id === comment.id);
+
+        if (reviewComment) {
             core.info('Detected review comment thread reply');
 
-            const allReviewComments = await client.getReviewComments(owner, repo, prNumber);
-
-            if (!threadHasAIComment(allReviewComments, comment.path, comment.position)) {
+            if (!threadHasAIComment(allReviewComments, reviewComment.path, reviewComment.position)) {
                 core.info('Thread does not contain an AI review comment, skipping.');
                 return;
             }
 
             const threadHistory = buildThreadFromComments(
-                allReviewComments, comment.path, comment.position, comment.id
+                allReviewComments, reviewComment.path, reviewComment.position, comment.id
             );
 
             const diff = await client.getPRDiff(owner, repo, prNumber);
@@ -111,8 +111,8 @@ async function run() {
 
             await client.createReviewComment(owner, repo, prNumber, {
                 body: replyBody,
-                path: comment.path,
-                line: comment.position,
+                path: reviewComment.path,
+                line: reviewComment.position,
             });
 
             try {
