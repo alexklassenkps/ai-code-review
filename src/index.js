@@ -54,6 +54,10 @@ async function run() {
 
         const { owner, repo, prNumber, comment } = ctx;
 
+        console.info(JSON.stringify(process.env, null, 2))
+        console.info(JSON.stringify(event, null, 2))
+        console.info(comment)
+
         const trigger = detectTrigger(comment.body);
         if (!trigger) {
             core.info('No @Claude or @Codex mention found, skipping.');
