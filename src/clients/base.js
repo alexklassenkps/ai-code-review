@@ -24,15 +24,15 @@ class GitPlatformClient {
         throw new Error('createComment() must be implemented');
     }
 
-    async createReviewComment(owner, repo, pr, { body, path, line }) {
-        throw new Error('createReviewComment() must be implemented');
+    async createReview(owner, repo, pr, { body, comments }) {
+        throw new Error('createReview() must be implemented');
     }
 
     async addReaction(owner, repo, commentId, reaction) {
         throw new Error('addReaction() must be implemented');
     }
 
-    async getReviewComments(owner, repo, pr) {
+    async getReviewComments(owner, repo, pr, reviewId) {
         throw new Error('getReviewComments() must be implemented');
     }
 }

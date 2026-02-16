@@ -64,11 +64,11 @@ class ForgejoClient extends GitPlatformClient {
         return this.request('POST', `/repos/${owner}/${repo}/issues/${pr}/comments`, { body });
     }
 
-    async createReviewComment(owner, repo, pr, { body, path, line }) {
+    async createReview(owner, repo, pr, { body, comments }) {
         return this.request('POST', `/repos/${owner}/${repo}/pulls/${pr}/reviews`, {
             event: 'COMMENT',
-            body: '',
-            comments: [{ path, new_position: line, body }],
+            body: body || '',
+            comments: comments.map(c => ({ path: c.path, new_position: c.line, body: c.body })),
         });
     }
 
@@ -78,8 +78,8 @@ class ForgejoClient extends GitPlatformClient {
         });
     }
 
-    async getReviewComments(owner, repo, pr) {
-        return this.request('GET', `/repos/${owner}/${repo}/pulls/${pr}/comments`);
+    async getReviewComments(owner, repo, pr, reviewId) {
+        return this.request('GET', `/repos/${owner}/${repo}/pulls/${pr}/reviews/${reviewId}/comments`);
     }
 }
 

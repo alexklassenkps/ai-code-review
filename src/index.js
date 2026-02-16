@@ -70,22 +70,20 @@ async function run() {
         }
 
         // Check if this is a reply in a review comment thread.
-        // The issue_comment event doesn't carry review fields (path, position,
-        // pull_request_review_id), so we look up the comment in the pulls
-        // comments API which returns those fields.
-        const allReviewComments = await client.getReviewComments(owner, repo, prNumber);
-        const reviewComment = allReviewComments.find(c => c.id === comment.id);
-
-        if (reviewComment) {
+        // pull_request_review_comment events carry pull_request_review_id,
+        // path, and position directly on the comment.
+        if (comment.pull_request_review_id) {
             core.info('Detected review comment thread reply');
 
-            if (!threadHasAIComment(allReviewComments, reviewComment.path, reviewComment.position)) {
+            const allReviewComments = await client.getReviewComments(owner, repo, prNumber, comment.pull_request_review_id);
+
+            if (!threadHasAIComment(allReviewComments, comment.path, comment.position)) {
                 core.info('Thread does not contain an AI review comment, skipping.');
                 return;
             }
 
             const threadHistory = buildThreadFromComments(
-                allReviewComments, reviewComment.path, reviewComment.position, comment.id
+                allReviewComments, comment.path, comment.position, comment.id
             );
 
             const diff = await client.getPRDiff(owner, repo, prNumber);
@@ -109,10 +107,9 @@ async function run() {
             const providerLabel = trigger.provider === 'claude' ? '🧠 Claude' : '🤖 Codex';
             const replyBody = buildFollowUpReply({ providerName: providerLabel, responseText });
 
-            await client.createReviewComment(owner, repo, prNumber, {
-                body: replyBody,
-                path: reviewComment.path,
-                line: reviewComment.position,
+            await client.createReview(owner, repo, prNumber, {
+                body: '',
+                comments: [{ path: comment.path, line: comment.position, body: replyBody }],
             });
 
             try {
@@ -172,21 +169,23 @@ async function run() {
             return;
         }
 
-        // Try to post inline comments, track which succeeded
+        // Submit all inline comments as a single PR review
         let inlineSuccess = 0;
         if (review.comments?.length > 0) {
-            for (const c of review.comments) {
-                try {
-                    await client.createReviewComment(owner, repo, prNumber, {
-                        body: formatInlineComment(c),
+            try {
+                await client.createReview(owner, repo, prNumber, {
+                    body: '',
+                    comments: review.comments.map(c => ({
                         path: c.path,
                         line: c.line,
-                    });
-                    c._inlinePosted = true;
-                    inlineSuccess++;
-                } catch (e) {
-                    // Will be included in summary fallback
-                }
+                        body: formatInlineComment(c),
+                    })),
+                });
+                inlineSuccess = review.comments.length;
+                review.comments.forEach(c => { c._inlinePosted = true; });
+            } catch (e) {
+                core.warning(`Failed to create review: ${e.message}`);
+                // All comments will be included in summary fallback
             }
         }
 

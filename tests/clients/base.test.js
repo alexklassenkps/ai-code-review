@@ -34,10 +34,10 @@ describe('GitPlatformClient', () => {
         await assert.rejects(() => client.createComment('o', 'r', 1, 'body'), /must be implemented/);
     });
 
-    it('createReviewComment throws not implemented', async () => {
+    it('createReview throws not implemented', async () => {
         const client = new GitPlatformClient('u', 't');
         await assert.rejects(
-            () => client.createReviewComment('o', 'r', 1, { body: 'b', path: 'p', line: 1 }),
+            () => client.createReview('o', 'r', 1, { body: '', comments: [] }),
             /must be implemented/,
         );
     });
@@ -49,6 +49,6 @@ describe('GitPlatformClient', () => {
 
     it('getReviewComments throws not implemented', async () => {
         const client = new GitPlatformClient('u', 't');
-        await assert.rejects(() => client.getReviewComments('o', 'r', 1), /must be implemented/);
+        await assert.rejects(() => client.getReviewComments('o', 'r', 1, 42), /must be implemented/);
     });
 });
