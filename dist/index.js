@@ -26112,8 +26112,13 @@ async function run() {
                 return;
             }
 
+            // Scope to comments from the same review to avoid mixing threads
+            // when multiple reviews have comments on the same line.
+            const reviewThreadComments = allReviewComments.filter(
+                c => c.pull_request_review_id === aiComment.pull_request_review_id
+            );
             const threadHistory = buildThreadFromComments(
-                allReviewComments, reviewComment.path, reviewComment.position, comment.id
+                reviewThreadComments, reviewComment.path, reviewComment.position, comment.id
             );
 
             const diff = await client.getPRDiff(owner, repo, prNumber);
