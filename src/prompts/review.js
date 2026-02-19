@@ -25,4 +25,24 @@ Use EXACTLY the number from the [L<number>] prefix for the "line" field. Do not 
 
 Only return valid JSON. No markdown fences.`;
 
-module.exports = { REVIEW_PROMPT };
+function buildReviewPrompt(ticketDescription) {
+    if (!ticketDescription) {
+        return REVIEW_PROMPT;
+    }
+
+    return REVIEW_PROMPT + `
+
+The following is the Jira ticket description for this PR. Read it carefully and identify any requirements or acceptance criteria described in it, then assess whether the code changes satisfy them.
+
+Jira Ticket Description:
+${ticketDescription}
+
+Add an "acceptance_criteria" array to your JSON response with each requirement you identified:
+{
+  "acceptance_criteria": [
+    { "criterion": "short description of the requirement", "status": "met|not_met|unclear", "comment": "brief explanation" }
+  ]
+}`;
+}
+
+module.exports = { REVIEW_PROMPT, buildReviewPrompt };

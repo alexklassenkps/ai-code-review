@@ -39,7 +39,33 @@ function buildContextFilesSection(contextFiles) {
     return section;
 }
 
-function buildSummaryComment({ providerName, review, triggerUser, inlineSuccess, contextFiles }) {
+const AC_STATUS_ICONS = {
+    met: '\u2705',
+    not_met: '\u274C',
+    unclear: '\u2753',
+};
+
+function buildAcceptanceCriteriaSection(acceptanceCriteria, jiraTicket) {
+    if (!acceptanceCriteria || acceptanceCriteria.length === 0) return '';
+
+    let section = '\n**Acceptance Criteria**';
+    if (jiraTicket?.key && jiraTicket?.url) {
+        section += ` ([${jiraTicket.key}](${jiraTicket.url}))`;
+    }
+    section += '\n\n';
+
+    for (const ac of acceptanceCriteria) {
+        const icon = AC_STATUS_ICONS[ac.status] || '\u2753';
+        const label = ac.status === 'met' ? 'Met' : ac.status === 'not_met' ? 'Not met' : 'Unclear';
+        section += `- ${icon} **${label}**: ${ac.criterion}`;
+        if (ac.comment) section += ` \u2014 ${ac.comment}`;
+        section += '\n';
+    }
+
+    return section;
+}
+
+function buildSummaryComment({ providerName, review, triggerUser, inlineSuccess, contextFiles, acceptanceCriteria, jiraTicket }) {
     let body = `### ${providerName} Code Review\n\n${review.summary}\n\n`;
 
     if (review.comments?.length > 0) {
@@ -58,6 +84,7 @@ function buildSummaryComment({ providerName, review, triggerUser, inlineSuccess,
         body += '✅ No issues found. The code looks good!\n';
     }
 
+    body += buildAcceptanceCriteriaSection(acceptanceCriteria, jiraTicket);
     body += buildContextFilesSection(contextFiles);
     body += `\n---\n_Triggered by @${triggerUser} • Provider: ${providerName}_`;
 
@@ -68,4 +95,4 @@ function buildFollowUpReply({ providerName, responseText }) {
     return `${responseText}\n\n_— ${providerName}_`;
 }
 
-module.exports = { severityIcon, formatInlineComment, formatFallbackComment, buildSummaryComment, buildFollowUpReply };
+module.exports = { severityIcon, formatInlineComment, formatFallbackComment, buildAcceptanceCriteriaSection, buildSummaryComment, buildFollowUpReply };

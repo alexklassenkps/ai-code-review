@@ -1,6 +1,6 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { severityIcon, formatInlineComment, formatFallbackComment, buildSummaryComment, buildFollowUpReply } = require('../src/formatter');
+const { severityIcon, formatInlineComment, formatFallbackComment, buildAcceptanceCriteriaSection, buildSummaryComment, buildFollowUpReply } = require('../src/formatter');
 
 describe('severityIcon', () => {
     it('returns red circle for critical', () => {
@@ -139,6 +139,104 @@ describe('buildSummaryComment', () => {
         });
 
         assert.match(result, /No Context Files included/);
+    });
+});
+
+describe('buildAcceptanceCriteriaSection', () => {
+    it('returns empty string when no AC provided', () => {
+        assert.equal(buildAcceptanceCriteriaSection(null), '');
+        assert.equal(buildAcceptanceCriteriaSection([]), '');
+    });
+
+    it('renders met/not_met/unclear items with correct icons', () => {
+        const ac = [
+            { criterion: 'User can log in', status: 'met', comment: 'Implemented in auth.js' },
+            { criterion: 'Password reset', status: 'not_met', comment: 'No changes' },
+            { criterion: 'Error messages', status: 'unclear', comment: 'Partially addressed' },
+        ];
+        const result = buildAcceptanceCriteriaSection(ac);
+
+        assert.match(result, /\u2705 \*\*Met\*\*: User can log in/);
+        assert.match(result, /\u274C \*\*Not met\*\*: Password reset/);
+        assert.match(result, /\u2753 \*\*Unclear\*\*: Error messages/);
+        assert.match(result, /Implemented in auth\.js/);
+        assert.match(result, /No changes/);
+        assert.match(result, /Partially addressed/);
+    });
+
+    it('includes Jira ticket link when provided', () => {
+        const ac = [{ criterion: 'Test', status: 'met', comment: 'Done' }];
+        const ticket = { key: 'PROJ-123', url: 'https://team.atlassian.net/browse/PROJ-123' };
+        const result = buildAcceptanceCriteriaSection(ac, ticket);
+
+        assert.match(result, /\[PROJ-123\]\(https:\/\/team\.atlassian\.net\/browse\/PROJ-123\)/);
+    });
+
+    it('omits link when jiraTicket is null', () => {
+        const ac = [{ criterion: 'Test', status: 'met', comment: 'Done' }];
+        const result = buildAcceptanceCriteriaSection(ac, null);
+
+        assert.match(result, /\*\*Acceptance Criteria\*\*/);
+        assert.ok(!result.includes('['));
+    });
+
+    it('handles items without comments', () => {
+        const ac = [{ criterion: 'Simple check', status: 'met' }];
+        const result = buildAcceptanceCriteriaSection(ac);
+
+        assert.match(result, /Simple check/);
+        assert.ok(!result.includes('\u2014'));
+    });
+});
+
+describe('buildSummaryComment with acceptance criteria', () => {
+    it('includes AC section when acceptance criteria provided', () => {
+        const result = buildSummaryComment({
+            providerName: 'Claude',
+            review: { summary: 'LGTM', comments: [] },
+            triggerUser: 'alice',
+            inlineSuccess: 0,
+            acceptanceCriteria: [
+                { criterion: 'Login works', status: 'met', comment: 'Implemented' },
+            ],
+            jiraTicket: { key: 'PROJ-1', url: 'https://team.atlassian.net/browse/PROJ-1' },
+        });
+
+        assert.match(result, /\*\*Acceptance Criteria\*\*/);
+        assert.match(result, /PROJ-1/);
+        assert.match(result, /Login works/);
+    });
+
+    it('omits AC section when no acceptance criteria', () => {
+        const result = buildSummaryComment({
+            providerName: 'Claude',
+            review: { summary: 'LGTM', comments: [] },
+            triggerUser: 'bob',
+            inlineSuccess: 0,
+        });
+
+        assert.ok(!result.includes('Acceptance Criteria'));
+    });
+
+    it('places AC section before context files section', () => {
+        const result = buildSummaryComment({
+            providerName: 'Claude',
+            review: { summary: 'LGTM', comments: [] },
+            triggerUser: 'charlie',
+            inlineSuccess: 0,
+            contextFiles: {
+                requestedFiles: ['ARCH.md'],
+                includedFiles: ['ARCH.md'],
+                missingFiles: [],
+            },
+            acceptanceCriteria: [
+                { criterion: 'Feature works', status: 'met', comment: 'Yes' },
+            ],
+        });
+
+        const acIdx = result.indexOf('Acceptance Criteria');
+        const ctxIdx = result.indexOf('Context Files');
+        assert.ok(acIdx < ctxIdx, 'AC section should appear before context files');
     });
 });
 

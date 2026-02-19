@@ -25856,6 +25856,10 @@ function getConfig() {
             .split(',')
             .map(f => f.trim())
             .filter(Boolean),
+        jiraProjectKey: getInput('jira_project_key'),
+        jiraUrl: getInput('jira_url'),
+        jiraEmail: getInput('jira_email'),
+        jiraToken: getInput('jira_api_token'),
     };
 }
 
@@ -25985,7 +25989,33 @@ function buildContextFilesSection(contextFiles) {
     return section;
 }
 
-function buildSummaryComment({ providerName, review, triggerUser, inlineSuccess, contextFiles }) {
+const AC_STATUS_ICONS = {
+    met: '\u2705',
+    not_met: '\u274C',
+    unclear: '\u2753',
+};
+
+function buildAcceptanceCriteriaSection(acceptanceCriteria, jiraTicket) {
+    if (!acceptanceCriteria || acceptanceCriteria.length === 0) return '';
+
+    let section = '\n**Acceptance Criteria**';
+    if (jiraTicket?.key && jiraTicket?.url) {
+        section += ` ([${jiraTicket.key}](${jiraTicket.url}))`;
+    }
+    section += '\n\n';
+
+    for (const ac of acceptanceCriteria) {
+        const icon = AC_STATUS_ICONS[ac.status] || '\u2753';
+        const label = ac.status === 'met' ? 'Met' : ac.status === 'not_met' ? 'Not met' : 'Unclear';
+        section += `- ${icon} **${label}**: ${ac.criterion}`;
+        if (ac.comment) section += ` \u2014 ${ac.comment}`;
+        section += '\n';
+    }
+
+    return section;
+}
+
+function buildSummaryComment({ providerName, review, triggerUser, inlineSuccess, contextFiles, acceptanceCriteria, jiraTicket }) {
     let body = `### ${providerName} Code Review\n\n${review.summary}\n\n`;
 
     if (review.comments?.length > 0) {
@@ -26004,6 +26034,7 @@ function buildSummaryComment({ providerName, review, triggerUser, inlineSuccess,
         body += '✅ No issues found. The code looks good!\n';
     }
 
+    body += buildAcceptanceCriteriaSection(acceptanceCriteria, jiraTicket);
     body += buildContextFilesSection(contextFiles);
     body += `\n---\n_Triggered by @${triggerUser} • Provider: ${providerName}_`;
 
@@ -26014,7 +26045,7 @@ function buildFollowUpReply({ providerName, responseText }) {
     return `${responseText}\n\n_— ${providerName}_`;
 }
 
-module.exports = { severityIcon, formatInlineComment, formatFallbackComment, buildSummaryComment, buildFollowUpReply };
+module.exports = { severityIcon, formatInlineComment, formatFallbackComment, buildAcceptanceCriteriaSection, buildSummaryComment, buildFollowUpReply };
 
 
 /***/ }),
@@ -26033,6 +26064,7 @@ const { parseReviewResponse } = __nccwpck_require__(6936);
 const { formatInlineComment, buildSummaryComment, buildFollowUpReply } = __nccwpck_require__(1925);
 const { loadContextFilesWithStatus } = __nccwpck_require__(9020);
 const { findThreadAIComment, buildThreadFromComments } = __nccwpck_require__(7816);
+const { extractTicketKey, createJiraClient } = __nccwpck_require__(359);
 
 // ─── Diff Annotation ────────────────────────────────────────────
 function annotateDiff(rawDiff) {
@@ -26191,10 +26223,40 @@ async function run() {
             core.info("No context file(s) loaded")
         }
 
+        // Fetch Jira ticket description (if configured)
+        let ticketDescription = null;
+        let jiraTicket = null;
+        const jiraEnabled = config.jiraUrl && config.jiraEmail && config.jiraToken;
+        if (jiraEnabled) {
+            try {
+                const prInfo = await client.getPRInfo(owner, repo, prNumber);
+                const prefix = config.jiraProjectKey || null;
+                const ticketKey = extractTicketKey(prInfo.title, prefix) || extractTicketKey(prInfo.head?.ref, prefix);
+                if (ticketKey) {
+                    core.info(`Found Jira ticket: ${ticketKey}`);
+                    const jiraClient = createJiraClient({
+                        url: config.jiraUrl,
+                        email: config.jiraEmail,
+                        token: config.jiraToken,
+                    });
+                    ticketDescription = await jiraClient.getTicketDescription(ticketKey);
+                    jiraTicket = {
+                        key: ticketKey,
+                        url: `${config.jiraUrl.replace(/\/+$/, '')}/browse/${ticketKey}`,
+                    };
+                    core.info(`Fetched Jira ticket description for ${ticketKey}`);
+                } else {
+                    core.info('No Jira ticket key found in PR title or branch name');
+                }
+            } catch (e) {
+                core.warning(`Failed to fetch Jira ticket: ${e.message}`);
+            }
+        }
+
         // Call AI provider
         core.info(`Calling ${trigger.provider} for review...`);
         const provider = getProvider(trigger.provider, config);
-        const rawResponse = await provider.review(truncatedDiff, trigger.message, context);
+        const rawResponse = await provider.review(truncatedDiff, trigger.message, context, ticketDescription);
 
         // Parse AI response
         let review;
@@ -26239,6 +26301,8 @@ async function run() {
                 includedFiles: contextFileStatus.includedFiles,
                 missingFiles: contextFileStatus.missingFiles,
             } : null,
+            acceptanceCriteria: review.acceptance_criteria || null,
+            jiraTicket,
         });
 
         await client.createComment(owner, repo, prNumber, summaryBody);
@@ -26261,6 +26325,50 @@ if (require.main === require.cache[eval('__filename')]) {
 }
 
 module.exports = { annotateDiff, run };
+
+
+/***/ }),
+
+/***/ 359:
+/***/ ((module) => {
+
+function extractTicketKey(text, prefix) {
+    if (!text) return null;
+    const pattern = prefix
+        ? new RegExp(`${prefix}-\\d+`)
+        : /[A-Z][A-Z0-9]+-\d+/;
+    const match = text.match(pattern);
+    return match ? match[0] : null;
+}
+
+function createJiraClient({ url, email, token }) {
+    const baseUrl = url.replace(/\/+$/, '');
+    const auth = Buffer.from(`${email}:${token}`).toString('base64');
+
+    async function getIssue(ticketKey) {
+        const res = await fetch(`${baseUrl}/rest/api/2/issue/${ticketKey}`, {
+            headers: {
+                'Authorization': `Basic ${auth}`,
+                'Accept': 'application/json',
+            },
+        });
+
+        if (!res.ok) {
+            throw new Error(`Jira API error (${res.status}): Failed to fetch ${ticketKey}`);
+        }
+
+        return res.json();
+    }
+
+    async function getTicketDescription(ticketKey) {
+        const issue = await getIssue(ticketKey);
+        return issue.fields?.description || '';
+    }
+
+    return { getIssue, getTicketDescription };
+}
+
+module.exports = { extractTicketKey, createJiraClient };
 
 
 /***/ }),
@@ -26328,7 +26436,27 @@ Use EXACTLY the number from the [L<number>] prefix for the "line" field. Do not 
 
 Only return valid JSON. No markdown fences.`;
 
-module.exports = { REVIEW_PROMPT };
+function buildReviewPrompt(ticketDescription) {
+    if (!ticketDescription) {
+        return REVIEW_PROMPT;
+    }
+
+    return REVIEW_PROMPT + `
+
+The following is the Jira ticket description for this PR. Read it carefully and identify any requirements or acceptance criteria described in it, then assess whether the code changes satisfy them.
+
+Jira Ticket Description:
+${ticketDescription}
+
+Add an "acceptance_criteria" array to your JSON response with each requirement you identified:
+{
+  "acceptance_criteria": [
+    { "criterion": "short description of the requirement", "status": "met|not_met|unclear", "comment": "brief explanation" }
+  ]
+}`;
+}
+
+module.exports = { REVIEW_PROMPT, buildReviewPrompt };
 
 /***/ }),
 
@@ -26352,7 +26480,7 @@ class LLMProvider {
         return msg;
     }
 
-    async review(diff, userMessage) {
+    async review(diff, userMessage, context, ticketDescription) {
         throw new Error('review() must be implemented');
     }
 
@@ -26378,7 +26506,7 @@ module.exports = { LLMProvider };
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 const { LLMProvider } = __nccwpck_require__(3065);
-const { REVIEW_PROMPT } = __nccwpck_require__(1631);
+const { buildReviewPrompt } = __nccwpck_require__(1631);
 const { FOLLOWUP_PROMPT } = __nccwpck_require__(1083);
 
 class ClaudeProvider extends LLMProvider {
@@ -26388,7 +26516,7 @@ class ClaudeProvider extends LLMProvider {
         }
     }
 
-    async review(diff, userMessage, context) {
+    async review(diff, userMessage, context, ticketDescription) {
         this.validateConfig();
 
         const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -26401,7 +26529,7 @@ class ClaudeProvider extends LLMProvider {
             body: JSON.stringify({
                 model: this.config.claudeModel,
                 max_tokens: 4096,
-                system: REVIEW_PROMPT,
+                system: buildReviewPrompt(ticketDescription),
                 messages: [{
                     role: 'user',
                     content: this.buildUserMessage(diff, userMessage, context),
@@ -26457,7 +26585,7 @@ module.exports = { ClaudeProvider };
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 const { LLMProvider } = __nccwpck_require__(3065);
-const { REVIEW_PROMPT } = __nccwpck_require__(1631);
+const { buildReviewPrompt } = __nccwpck_require__(1631);
 const { FOLLOWUP_PROMPT } = __nccwpck_require__(1083);
 
 class OpenAIProvider extends LLMProvider {
@@ -26467,7 +26595,7 @@ class OpenAIProvider extends LLMProvider {
         }
     }
 
-    async review(diff, userMessage, context) {
+    async review(diff, userMessage, context, ticketDescription) {
         this.validateConfig();
 
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -26479,7 +26607,7 @@ class OpenAIProvider extends LLMProvider {
             body: JSON.stringify({
                 model: this.config.codexModel,
                 messages: [
-                    { role: 'system', content: REVIEW_PROMPT },
+                    { role: 'system', content: buildReviewPrompt(ticketDescription) },
                     {
                         role: 'user',
                         content: this.buildUserMessage(diff, userMessage, context),

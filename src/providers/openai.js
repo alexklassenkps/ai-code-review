@@ -1,5 +1,5 @@
 const { LLMProvider } = require('./base');
-const { REVIEW_PROMPT } = require('../prompts/review');
+const { buildReviewPrompt } = require('../prompts/review');
 const { FOLLOWUP_PROMPT } = require('../prompts/followup');
 
 class OpenAIProvider extends LLMProvider {
@@ -9,7 +9,7 @@ class OpenAIProvider extends LLMProvider {
         }
     }
 
-    async review(diff, userMessage, context) {
+    async review(diff, userMessage, context, ticketDescription) {
         this.validateConfig();
 
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -21,7 +21,7 @@ class OpenAIProvider extends LLMProvider {
             body: JSON.stringify({
                 model: this.config.codexModel,
                 messages: [
-                    { role: 'system', content: REVIEW_PROMPT },
+                    { role: 'system', content: buildReviewPrompt(ticketDescription) },
                     {
                         role: 'user',
                         content: this.buildUserMessage(diff, userMessage, context),

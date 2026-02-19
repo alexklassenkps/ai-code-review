@@ -41,6 +41,18 @@ inputs:
     description: 'Comma-separated list of file paths (relative to repo root) to include as context for the AI reviewer (e.g. ARCHITECTURE.md,REVIEW_HINTS.md)'
     required: false
     default: ''
+  jira_project_key:
+    description: 'Jira project key prefix to match in PR titles/branch names (e.g., ECOM). If omitted, any UPPERCASE-123 pattern is matched.'
+    required: false
+  jira_url:
+    description: 'Jira instance base URL (e.g., https://yourteam.atlassian.net)'
+    required: false
+  jira_email:
+    description: 'Jira account email for API authentication'
+    required: false
+  jira_api_token:
+    description: 'Jira API token'
+    required: false
 
 runs:
   using: 'node20'

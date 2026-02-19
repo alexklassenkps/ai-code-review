@@ -9,6 +9,7 @@ const { parseReviewResponse } = require('./parser');
 const { formatInlineComment, buildSummaryComment, buildFollowUpReply } = require('./formatter');
 const { loadContextFilesWithStatus } = require('./context');
 const { findThreadAIComment, buildThreadFromComments } = require('./conversation');
+const { extractTicketKey, createJiraClient } = require('./jira');
 
 // ─── Diff Annotation ────────────────────────────────────────────
 function annotateDiff(rawDiff) {
@@ -167,10 +168,40 @@ async function run() {
             core.info("No context file(s) loaded")
         }
 
+        // Fetch Jira ticket description (if configured)
+        let ticketDescription = null;
+        let jiraTicket = null;
+        const jiraEnabled = config.jiraUrl && config.jiraEmail && config.jiraToken;
+        if (jiraEnabled) {
+            try {
+                const prInfo = await client.getPRInfo(owner, repo, prNumber);
+                const prefix = config.jiraProjectKey || null;
+                const ticketKey = extractTicketKey(prInfo.title, prefix) || extractTicketKey(prInfo.head?.ref, prefix);
+                if (ticketKey) {
+                    core.info(`Found Jira ticket: ${ticketKey}`);
+                    const jiraClient = createJiraClient({
+                        url: config.jiraUrl,
+                        email: config.jiraEmail,
+                        token: config.jiraToken,
+                    });
+                    ticketDescription = await jiraClient.getTicketDescription(ticketKey);
+                    jiraTicket = {
+                        key: ticketKey,
+                        url: `${config.jiraUrl.replace(/\/+$/, '')}/browse/${ticketKey}`,
+                    };
+                    core.info(`Fetched Jira ticket description for ${ticketKey}`);
+                } else {
+                    core.info('No Jira ticket key found in PR title or branch name');
+                }
+            } catch (e) {
+                core.warning(`Failed to fetch Jira ticket: ${e.message}`);
+            }
+        }
+
         // Call AI provider
         core.info(`Calling ${trigger.provider} for review...`);
         const provider = getProvider(trigger.provider, config);
-        const rawResponse = await provider.review(truncatedDiff, trigger.message, context);
+        const rawResponse = await provider.review(truncatedDiff, trigger.message, context, ticketDescription);
 
         // Parse AI response
         let review;
@@ -215,6 +246,8 @@ async function run() {
                 includedFiles: contextFileStatus.includedFiles,
                 missingFiles: contextFileStatus.missingFiles,
             } : null,
+            acceptanceCriteria: review.acceptance_criteria || null,
+            jiraTicket,
         });
 
         await client.createComment(owner, repo, prNumber, summaryBody);

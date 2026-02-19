@@ -1,5 +1,5 @@
 const { LLMProvider } = require('./base');
-const { REVIEW_PROMPT } = require('../prompts/review');
+const { buildReviewPrompt } = require('../prompts/review');
 const { FOLLOWUP_PROMPT } = require('../prompts/followup');
 
 class ClaudeProvider extends LLMProvider {
@@ -9,7 +9,7 @@ class ClaudeProvider extends LLMProvider {
         }
     }
 
-    async review(diff, userMessage, context) {
+    async review(diff, userMessage, context, ticketDescription) {
         this.validateConfig();
 
         const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -22,7 +22,7 @@ class ClaudeProvider extends LLMProvider {
             body: JSON.stringify({
                 model: this.config.claudeModel,
                 max_tokens: 4096,
-                system: REVIEW_PROMPT,
+                system: buildReviewPrompt(ticketDescription),
                 messages: [{
                     role: 'user',
                     content: this.buildUserMessage(diff, userMessage, context),

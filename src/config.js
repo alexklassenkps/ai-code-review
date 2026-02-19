@@ -20,6 +20,10 @@ function getConfig() {
             .split(',')
             .map(f => f.trim())
             .filter(Boolean),
+        jiraProjectKey: getInput('jira_project_key'),
+        jiraUrl: getInput('jira_url'),
+        jiraEmail: getInput('jira_email'),
+        jiraToken: getInput('jira_api_token'),
     };
 }
 

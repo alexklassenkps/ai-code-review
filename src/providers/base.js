@@ -15,7 +15,7 @@ class LLMProvider {
         return msg;
     }
 
-    async review(diff, userMessage) {
+    async review(diff, userMessage, context, ticketDescription) {
         throw new Error('review() must be implemented');
     }
 
