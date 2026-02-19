@@ -26251,6 +26251,8 @@ async function run() {
             } catch (e) {
                 core.warning(`Failed to fetch Jira ticket: ${e.message}`);
             }
+        } else {
+            console.log("jira disabled")
         }
 
         // Call AI provider
